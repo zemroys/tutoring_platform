@@ -1,8 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from auth import create_access_token
-
+from auth import create_access_token, get_current_user, require_role
 from database import get_db
 import models
 import schemas
@@ -42,3 +41,12 @@ def login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 
+@app.get("/me", response_model=schemas.UserOut)
+def me(user: models.User = Depends(get_current_user)):
+    return user
+
+
+# Временный, для проверки ролей. Заменим настоящими endpoint'ами преподавателя.
+@app.get("/teacher/ping")
+def teacher_ping(user: models.User = Depends(require_role("teacher", "admin"))):
+    return {"ok": True, "role": user.role}
