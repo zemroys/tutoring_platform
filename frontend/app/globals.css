@@ -4,12 +4,16 @@
 @theme {
   --color-ultra: #2f3cff; /* главный цвет */
   --color-ultra-dark: #1f29d6;
-  --color-sun: #ffe14d; /* жёлтый стикер */
-  --color-bubble: #ff8cc6; /* розовый стикер */
-  --color-mint: #5ce8b5; /* мятный стикер */
+  --color-sun: #ffe14d; /* лимонный стикер - физика */
+  --color-bubble: #ff8cc6; /* розовый стикер - профильная математика */
+  --color-mint: #5ce8b5; /* мятный стикер - информатика */
+  --color-cloud: #7cc8ff; /* морской стикер - базовая математика */
+  --color-peach: #ff9f5a; /* персиковый стикер - русский язык */
+  --color-lavender: #b89cff; /* лавандовый стикер - английский язык */
   --color-ink: #16141c; /* текст и обводки */
   --color-paper: #fbfbfd; /* фон страницы */
   --color-muted: #5e5a6b; /* второстепенный текст */
+  
 }
 
 @theme inline {

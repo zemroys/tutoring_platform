@@ -86,7 +86,7 @@ export default function Home() {
         {/* ---------- Предметы ---------- */}
         <section id="subjects" className="scroll-mt-8 pb-20 md:pb-28">
           <h2 className="font-display text-3xl md:text-5xl">Предметы</h2>
-          <ul className="mt-12 grid gap-8 md:grid-cols-3 md:gap-6">
+          <ul className="mt-12 grid gap-8 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
             {SUBJECTS.map((subject) => (
               <li
                 key={subject.id}
