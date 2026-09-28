@@ -107,3 +107,66 @@ def add_homework(
     db.commit()
     db.refresh(item)
     return item
+
+
+def check_access(course_id: int, user: models.User, db: Session) -> models.Course:
+    course = db.get(models.Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    if user.role == "admin" or course.teacher_id == user.id:
+        return course
+    purchase = (
+        db.query(models.Purchase)
+        .filter(
+            models.Purchase.user_id == user.id,
+            models.Purchase.course_id == course_id,
+            models.Purchase.status == "paid",
+        )
+        .first()
+    )
+    if purchase is None:
+        raise HTTPException(status_code=403, detail="Курс не куплен")
+    return course
+
+
+@app.get("/my/courses", response_model=list[schemas.CourseOut])
+def my_purchased_courses(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    return (
+        db.query(models.Course)
+        .join(models.Purchase, models.Purchase.course_id == models.Course.id)
+        .filter(models.Purchase.user_id == user.id, models.Purchase.status == "paid")
+        .all()
+    )
+
+
+@app.get("/courses/{course_id}/schedule", response_model=list[schemas.ScheduleOut])
+def course_schedule(
+    course_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    check_access(course_id, user, db)
+    return (
+        db.query(models.Schedule)
+        .filter(models.Schedule.course_id == course_id)
+        .order_by(models.Schedule.week_number, models.Schedule.stream_date)
+        .all()
+    )
+
+
+@app.get("/courses/{course_id}/homework", response_model=list[schemas.HomeworkOut])
+def course_homework(
+    course_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    check_access(course_id, user, db)
+    return (
+        db.query(models.Homework)
+        .filter(models.Homework.course_id == course_id)
+        .order_by(models.Homework.week_number)
+        .all()
+    )
