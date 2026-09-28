@@ -46,7 +46,64 @@ def me(user: models.User = Depends(get_current_user)):
     return user
 
 
-# Временный, для проверки ролей. Заменим настоящими endpoint'ами преподавателя.
-@app.get("/teacher/ping")
-def teacher_ping(user: models.User = Depends(require_role("teacher", "admin"))):
-    return {"ok": True, "role": user.role}
+def get_own_course(course_id: int, user: models.User, db: Session) -> models.Course:
+    course = db.get(models.Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    if user.role != "admin" and course.teacher_id != user.id:
+        raise HTTPException(status_code=403, detail="Это не ваша группа")
+    return course
+
+
+@app.post("/courses", response_model=schemas.CourseOut)
+def create_course(
+    data: schemas.CourseCreate,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_role("admin")),
+):
+    teacher = db.get(models.User, data.teacher_id)
+    if teacher is None or teacher.role != "teacher":
+        raise HTTPException(status_code=400, detail="Преподаватель не найден")
+    course = models.Course(**data.model_dump())
+    db.add(course)
+    db.commit()
+    db.refresh(course)
+    return course
+
+
+@app.get("/teacher/courses", response_model=list[schemas.CourseOut])
+def my_courses(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_role("teacher", "admin")),
+):
+    return db.query(models.Course).filter(models.Course.teacher_id == user.id).all()
+
+
+@app.post("/teacher/courses/{course_id}/schedule", response_model=schemas.ScheduleOut)
+def add_schedule(
+    course_id: int,
+    data: schemas.ScheduleCreate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_role("teacher", "admin")),
+):
+    get_own_course(course_id, user, db)
+    item = models.Schedule(course_id=course_id, **data.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.post("/teacher/courses/{course_id}/homework", response_model=schemas.HomeworkOut)
+def add_homework(
+    course_id: int,
+    data: schemas.HomeworkCreate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_role("teacher", "admin")),
+):
+    get_own_course(course_id, user, db)
+    item = models.Homework(course_id=course_id, **data.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
