@@ -16,6 +16,7 @@ class Course(Base):
     title = Column(String)
     description = Column(Text)
     price = Column(Integer)
+    teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 class Purchase(Base):
     __tablename__ = "purchases"
