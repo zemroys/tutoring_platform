@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+/* ---------- Цвета: насыщенный ультрамарин + цвета стикеров ---------- */
+@theme {
+  --color-ultra: #2f3cff; /* главный цвет */
+  --color-ultra-dark: #1f29d6;
+  --color-sun: #ffe14d; /* лимонный стикер - физика */
+  --color-bubble: #ff8cc6; /* розовый стикер - профильная математика */
+  --color-mint: #5ce8b5; /* мятный стикер - информатика */
+  --color-cloud: #7cc8ff; /* морской стикер - базовая математика */
+  --color-peach: #ff9f5a; /* персиковый стикер - русский язык */
+  --color-lavender: #b89cff; /* лавандовый стикер - английский язык */
+  --color-ink: #16141c; /* текст и обводки */
+  --color-paper: #fbfbfd; /* фон страницы */
+  --color-muted: #5e5a6b; /* второстепенный текст */
+  
+}
+
+@theme inline {
+  --font-sans: var(--font-onest), system-ui, sans-serif;
+  --font-display: var(--font-dela), var(--font-onest), sans-serif;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.container-page {
+  max-width: 76rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .container-page {
+    padding-inline: 2rem;
+  }
+}
+
+/* ---------- Стикерный стиль: толстая обводка и жёсткая тень ---------- */
+.card {
+  border: 2.5px solid var(--color-ink);
+  border-radius: 1.5rem;
+  box-shadow: 6px 6px 0 var(--color-ink);
+}
+
+.sticker {
+  display: inline-block;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-ink);
+  white-space: nowrap;
+}
+
+/* Карточки предметов «выпрямляются» при наведении, как стикер, который прижали */
+.subject-card {
+  transition: transform 0.2s ease;
+}
+.subject-card:hover {
+  transform: rotate(0deg) translateY(-4px);
+}
+
+/* ---------- Плитки «созвона» ---------- */
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  aspect-ratio: 1;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 1rem;
+  animation: pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  animation-delay: calc(var(--i, 0) * 110ms + 250ms);
+}
+
+.tile-empty {
+  border-style: dashed;
+  background: #fff;
+  color: var(--color-ultra);
+  animation:
+    pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both calc(var(--i, 0) * 110ms + 250ms),
+    breathe 2.4s ease-in-out 1.6s infinite;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* ---------- Кнопки: объёмные, «нажимаются» при клике ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 999px;
+  padding: 0.9rem 1.75rem;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  line-height: 1.2;
+  color: var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-ink);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 var(--color-ink);
+}
+.btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--color-ink);
+}
+
+.btn-sm {
+  padding: 0.5rem 1.125rem;
+  font-size: 1rem;
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
+
+.btn-sun {
+  background: var(--color-sun);
+}
+.btn-ultra {
+  background: var(--color-ultra);
+  color: #fff;
+}
+
+.nav-link {
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.3em;
+  text-decoration-thickness: 2px;
+  transition: text-decoration-color 0.15s;
+}
+.nav-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Видимый фокус для навигации с клавиатуры */
+:focus-visible {
+  outline: 3px solid var(--color-sun);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--color-ink);
+}
+
+/* Если человек просил систему убрать анимации, уважаем это */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .tile,
+  .tile-empty {
+    animation: none;
+  }
+  .subject-card,
+  .btn {
+    transition: none;
+  }
+}
