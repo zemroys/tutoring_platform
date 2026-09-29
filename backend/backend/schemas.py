@@ -75,6 +75,24 @@ def check_name(v: str) -> str:
     return v
 
 
+# ---------- Телеграм ----------
+
+TELEGRAM_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+
+
+def check_telegram(v: str) -> str:
+    v = v.strip()
+    # Принимаем и "@nick", и "nick", и ссылку "t.me/nick"
+    for prefix in ("https://", "http://", "t.me/", "@"):
+        if v.lower().startswith(prefix):
+            v = v[len(prefix):]
+    if not TELEGRAM_RE.match(v):
+        raise ValueError(
+            "Ник в Телеграме: от 5 до 32 символов, латинские буквы, цифры и _, например @ivan_petrov"
+        )
+    return v
+
+
 # ---------- Пользователи ----------
 
 
@@ -83,6 +101,7 @@ class UserRegister(BaseModel):
     password: str = Field(max_length=64)
     first_name: str
     last_name: str
+    telegram: str
 
     @field_validator("email")
     @classmethod
@@ -106,6 +125,11 @@ class UserRegister(BaseModel):
     def names_valid(cls, v: str) -> str:
         return check_name(v)
 
+    @field_validator("telegram")
+    @classmethod
+    def telegram_valid(cls, v: str) -> str:
+        return check_telegram(v)
+
 
 class UserLogin(BaseModel):
     email: str = Field(max_length=254)
@@ -118,6 +142,7 @@ class UserOut(BaseModel):
     role: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    telegram: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -248,3 +273,62 @@ class StudentProgressOut(BaseModel):
     webinars_attended: int
     webinars_total: int
     activity_percent: Optional[int] = None  # None, пока считать не из чего
+
+
+# ---------- Результат опросника ----------
+
+
+class QuizItem(BaseModel):
+    subject_id: str = Field(pattern=r"^[a-z-]{1,30}$")
+    level: Literal["base", "advanced"]
+
+
+class QuizResultIn(BaseModel):
+    items: list[QuizItem] = Field(min_length=1, max_length=10)
+
+
+class QuizResultOut(BaseModel):
+    items: list[QuizItem]
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class QuizLeadOut(QuizResultOut):
+    user_id: int
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+
+# ---------- Куратор ----------
+
+
+class GroupShort(BaseModel):
+    id: int
+    title: str
+
+
+class CuratorStudentOut(BaseModel):
+    id: int
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    telegram: Optional[str] = None
+    created_at: Optional[datetime] = None
+    quiz_items: Optional[list[QuizItem]] = None
+    groups: list[GroupShort] = []
+
+
+class CuratorCourseOut(BaseModel):
+    id: int
+    title: str
+    teacher_name: Optional[str] = None
+    students_count: int
+    capacity: int
+
+
+class EnrollIn(BaseModel):
+    user_id: int

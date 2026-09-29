@@ -367,3 +367,20 @@ button.task-mark:active {
   background: var(--color-sun);
   box-shadow: 3px 3px 0 var(--color-ink);
 }
+
+/* ---------- Выпадающие списки ---------- */
+.field select {
+  border: 2.5px solid var(--color-ink);
+  border-radius: 0.875rem;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-weight: 400;
+  background: #fff;
+  min-width: 0;
+}
+
+.field select:focus-visible {
+  outline: 3px solid var(--color-ultra);
+  outline-offset: 2px;
+  box-shadow: none;
+}

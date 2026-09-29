@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [telegram, setTelegram] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -23,7 +24,13 @@ export default function RegisterPage() {
       // Сначала создаём аккаунт, потом сразу входим, чтобы не заставлять вводить всё второй раз
       await api<User>("/register", {
         method: "POST",
-        body: JSON.stringify({ email, password, first_name: firstName, last_name: lastName }),
+        body: JSON.stringify({
+          email,
+          password,
+          first_name: firstName,
+          last_name: lastName,
+          telegram,
+        }),
       });
       await api<User>("/login", { method: "POST", body: JSON.stringify({ email, password }) });
       router.push("/cabinet");
@@ -70,6 +77,24 @@ export default function RegisterPage() {
             />
           </label>
         </div>
+        <label className="field">
+          <span>Ник в Телеграме</span>
+          <input
+            type="text"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+            maxLength={60}
+            placeholder="@ivan_petrov"
+            aria-describedby="telegram-hint"
+            value={telegram}
+            onChange={(e) => setTelegram(e.target.value)}
+          />
+          <span id="telegram-hint" className="field-hint">
+            Куратор напишет тебе, чтобы подобрать группу.
+          </span>
+        </label>
         <label className="field">
           <span>Email</span>
           <input

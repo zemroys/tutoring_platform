@@ -6,9 +6,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export type User = {
   id: number;
   email: string;
-  role: "student" | "teacher" | "admin";
+  role: "student" | "teacher" | "curator" | "admin";
   first_name: string | null;
   last_name: string | null;
+  telegram: string | null;
 };
 
 export class ApiError extends Error {
@@ -111,4 +112,25 @@ export type StudentProgress = {
   webinars_attended: number;
   webinars_total: number;
   activity_percent: number | null; // null, пока считать не из чего
+};
+
+export type GroupShort = { id: number; title: string };
+
+export type CuratorStudent = {
+  id: number;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  telegram: string | null;
+  created_at: string | null;
+  quiz_items: { subject_id: string; level: "base" | "advanced" }[] | null;
+  groups: GroupShort[];
+};
+
+export type CuratorCourse = {
+  id: number;
+  title: string;
+  teacher_name: string | null;
+  students_count: number;
+  capacity: number;
 };
