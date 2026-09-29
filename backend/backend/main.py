@@ -1,12 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
+import os
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from auth import create_access_token, get_current_user, require_role
+from auth import ACCESS_TOKEN_EXPIRE_MINUTES, COOKIE_SECURE, create_access_token, get_current_user, require_role
 from database import get_db
 import models
 import schemas
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @app.get("/")
@@ -31,14 +40,22 @@ def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
     return new_user
 
 
-@app.post("/login", response_model=schemas.Token)
-def login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
+@app.post("/login", response_model=schemas.UserOut)
+def login(credentials: schemas.UserLogin, response: Response, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == credentials.email).first()
     if not user or not pwd_context.verify(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
 
     token = create_access_token(user.id)
-    return {"access_token": token, "token_type": "bearer"}
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    return user
 
 
 @app.get("/me", response_model=schemas.UserOut)
@@ -170,3 +187,9 @@ def course_homework(
         .order_by(models.Homework.week_number)
         .all()
     )
+
+
+@app.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("access_token", httponly=True, samesite="lax", secure=COOKIE_SECURE)
+    return {"ok": True}
