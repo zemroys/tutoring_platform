@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AuthButton from "@/components/AuthButton";
 import Logo from "@/components/Logo";
+import NavLink from "@/components/NavLink";
 import { SITE } from "@/lib/site";
 
 export default function SiteHeader() {
@@ -11,15 +12,15 @@ export default function SiteHeader() {
       </Link>
 
       <nav className="flex items-center gap-6">
-        <Link href="/#subjects" className="nav-link hidden md:inline">
+        <NavLink href="/#subjects" className="hidden md:inline">
           Предметы
-        </Link>
-        <Link href="/#how" className="nav-link hidden md:inline">
+        </NavLink>
+        <NavLink href="/#how" className="hidden md:inline">
           Как учимся
-        </Link>
-        <Link href="/prices" className="nav-link hidden md:inline">
+        </NavLink>
+        <NavLink href="/prices" className="hidden md:inline">
           Цены
-        </Link>
+        </NavLink>
         <AuthButton />
       </nav>
     </header>
