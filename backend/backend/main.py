@@ -1,8 +1,12 @@
 import os
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from passlib.context import CryptContext
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 import models
@@ -19,6 +23,19 @@ from auth import (
 from database import get_db
 
 app = FastAPI()
+
+# Ограничение попыток: считаем запросы с одного IP-адреса.
+# Хранится в памяти сервера, после перезапуска счётчики обнуляются.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+def rate_limit_exceeded(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Слишком много попыток. Подожди немного и попробуй снова."},
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +60,8 @@ def read_root():
 
 
 @app.post("/register", response_model=schemas.UserOut)
-def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+def register(request: Request, user: schemas.UserRegister, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
@@ -62,7 +80,13 @@ def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
 
 
 @app.post("/login", response_model=schemas.UserOut)
-def login(credentials: schemas.UserLogin, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("10/minute;100/hour")
+def login(
+    request: Request,
+    credentials: schemas.UserLogin,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     user = db.query(models.User).filter(models.User.email == credentials.email).first()
     if not user or not pwd_context.verify(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
