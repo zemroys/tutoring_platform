@@ -1,12 +1,12 @@
 import re
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional
 
 
 class UserRegister(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=64)
 
     @field_validator("email")
     @classmethod
@@ -36,8 +36,8 @@ class UserOut(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=64)
 
 class Token(BaseModel):
     access_token: str
