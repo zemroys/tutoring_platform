@@ -71,4 +71,5 @@ export type Homework = {
   course_id: number;
   week_number: number;
   description: string;
+  link: string | null; // ссылка на материалы, может не быть
 };

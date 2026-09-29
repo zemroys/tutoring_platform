@@ -27,6 +27,15 @@ function formatDate(value: string | null): string {
   });
 }
 
+// Показываем ученику, на какой сайт ведёт ссылка, прежде чем он по ней нажмёт
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
 function sortSchedule(items: ScheduleItem[]): ScheduleItem[] {
   return [...items].sort(
     (a, b) =>
@@ -229,6 +238,19 @@ export default function CoursePage() {
                     )}
                   </div>
                   <p className="mt-3 whitespace-pre-line leading-relaxed">{item.description}</p>
+                  {item.link && (
+                    <p className="mt-4">
+                      <a
+                        href={item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-link"
+                      >
+                        Открыть материалы
+                      </a>{" "}
+                      <span className="text-sm text-muted">({hostOf(item.link)})</span>
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

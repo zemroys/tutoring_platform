@@ -2,6 +2,58 @@ import re
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
+
+
+# Ссылки на вебинары: только эти сервисы и только такой вид адреса
+ALLOWED_WEBINAR_PREFIXES = {
+    "telemost.yandex.ru": "/j/",
+    "teams.live.com": "/meet/",
+}
+
+# Ссылки на материалы к домашке: только облачные диски
+ALLOWED_MATERIAL_HOSTS = {
+    "disk.yandex.ru",
+    "yadi.sk",
+    "drive.google.com",
+    "docs.google.com",
+}
+
+
+def is_clean_https(parsed) -> bool:
+    # Никаких портов и логинов в ссылке: https://telemost.yandex.ru@evil.com не пройдёт
+    return (
+        parsed.scheme == "https"
+        and parsed.port is None
+        and not parsed.username
+        and not parsed.password
+    )
+
+
+def check_webinar_link(v: str) -> str:
+    v = v.strip()
+    parsed = urlparse(v)
+    prefix = ALLOWED_WEBINAR_PREFIXES.get(parsed.hostname or "")
+    if (
+        prefix is None
+        or not is_clean_https(parsed)
+        or not parsed.path.startswith(prefix)
+        or len(parsed.path) <= len(prefix)
+    ):
+        raise ValueError(
+            "Ссылка должна быть вида https://telemost.yandex.ru/j/... или https://teams.live.com/meet/..."
+        )
+    return v
+
+
+def check_material_link(v: Optional[str]) -> Optional[str]:
+    if v is None or not v.strip():
+        return None
+    v = v.strip()
+    parsed = urlparse(v)
+    if not is_clean_https(parsed) or parsed.hostname not in ALLOWED_MATERIAL_HOSTS:
+        raise ValueError("Ссылка на материалы: только Яндекс Диск или Google Диск")
+    return v
 
 
 class UserRegister(BaseModel):
@@ -62,15 +114,14 @@ class CourseOut(BaseModel):
 
 class ScheduleCreate(BaseModel):
     week_number: int
-    webinar_link: str
+    webinar_link: str = Field(max_length=500)
     stream_date: Optional[datetime] = None
 
     @field_validator("webinar_link")
     @classmethod
-    def link_must_be_https(cls, v: str) -> str:
-        if not v.startswith("https://"):
-            raise ValueError("Ссылка должна начинаться с https://")
-        return v
+    def webinar_link_allowed(cls, v: str) -> str:
+        return check_webinar_link(v)
+
 
 class ScheduleOut(BaseModel):
     id: int
@@ -84,13 +135,21 @@ class ScheduleOut(BaseModel):
 
 class HomeworkCreate(BaseModel):
     week_number: int
-    description: str
+    description: str = Field(max_length=5000)
+    link: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("link")
+    @classmethod
+    def material_link_allowed(cls, v: Optional[str]) -> Optional[str]:
+        return check_material_link(v)
+
 
 class HomeworkOut(BaseModel):
     id: int
     course_id: int
     week_number: int
     description: str
+    link: Optional[str] = None
 
     class Config:
         from_attributes = True

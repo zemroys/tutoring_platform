@@ -40,6 +40,7 @@ class Homework(Base):
     course_id = Column(Integer, ForeignKey("courses.id"))
     week_number = Column(Integer)
     description = Column(Text)
+    link = Column(String, nullable=True)
 
 class Submission(Base):
     __tablename__ = "submissions"

@@ -13,6 +13,7 @@ type Props = {
 export default function AddHomeworkForm({ courseId, onAdded }: Props) {
   const [week, setWeek] = useState("1");
   const [description, setDescription] = useState("");
+  const [link, setLink] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -23,10 +24,15 @@ export default function AddHomeworkForm({ courseId, onAdded }: Props) {
     try {
       const item = await api<Homework>(`/teacher/courses/${courseId}/homework`, {
         method: "POST",
-        body: JSON.stringify({ week_number: Number(week), description: description.trim() }),
+        body: JSON.stringify({
+          week_number: Number(week),
+          description: description.trim(),
+          link: link.trim() || null,
+        }),
       });
       onAdded(item);
       setDescription("");
+      setLink("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось сохранить.");
     } finally {
@@ -58,6 +64,20 @@ export default function AddHomeworkForm({ courseId, onAdded }: Props) {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+      </label>
+
+      <label className="field">
+        <span>Ссылка на материалы (необязательно)</span>
+        <input
+          type="url"
+          placeholder="https://disk.yandex.ru/..."
+          aria-describedby="material-hint"
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+        />
+        <span id="material-hint" className="field-hint">
+          Файл с заданием на Яндекс Диске или Google Диске
+        </span>
       </label>
 
       {error && (
