@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AuthButton from "@/components/AuthButton";
 import Logo from "@/components/Logo";
 import { SITE } from "@/lib/site";
 
@@ -19,9 +20,7 @@ export default function SiteHeader() {
         <Link href="/prices" className="nav-link hidden md:inline">
           Цены
         </Link>
-        <Link href="/login" className="btn btn-sun btn-sm">
-          Войти
-        </Link>
+        <AuthButton />
       </nav>
     </header>
   );
