@@ -1,14 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException, Response
-from fastapi.middleware.cors import CORSMiddleware
 import os
-from sqlalchemy.orm import Session
+
+from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
-from auth import ACCESS_TOKEN_EXPIRE_MINUTES, COOKIE_SECURE, create_access_token, get_current_user, require_role
-from database import get_db
+from sqlalchemy.orm import Session
+
 import models
+import progress
 import schemas
+from access import check_access, get_own_course
+from auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    COOKIE_SECURE,
+    create_access_token,
+    get_current_user,
+    require_role,
+)
+from database import get_db
 
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
@@ -16,27 +27,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Сдача домашек, проверка, посещаемость и активность лежат в progress.py
+app.include_router(progress.router)
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 @app.get("/")
 def read_root():
     return {"status": "ok"}
+
+
+# ---------- Регистрация, вход, выход ----------
+
+
 @app.post("/register", response_model=schemas.UserOut)
 def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
 
-    hashed_password = pwd_context.hash(user.password)
     new_user = models.User(
         email=user.email,
-        password_hash=hashed_password,
-        role="student"
+        password_hash=pwd_context.hash(user.password),
+        role="student",
+        first_name=user.first_name,
+        last_name=user.last_name,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-
     return new_user
 
 
@@ -58,18 +79,18 @@ def login(credentials: schemas.UserLogin, response: Response, db: Session = Depe
     return user
 
 
+@app.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("access_token", httponly=True, samesite="lax", secure=COOKIE_SECURE)
+    return {"ok": True}
+
+
 @app.get("/me", response_model=schemas.UserOut)
 def me(user: models.User = Depends(get_current_user)):
     return user
 
 
-def get_own_course(course_id: int, user: models.User, db: Session) -> models.Course:
-    course = db.get(models.Course, course_id)
-    if course is None:
-        raise HTTPException(status_code=404, detail="Курс не найден")
-    if user.role != "admin" and course.teacher_id != user.id:
-        raise HTTPException(status_code=403, detail="Это не ваша группа")
-    return course
+# ---------- Админ: создание групп ----------
 
 
 @app.post("/courses", response_model=schemas.CourseOut)
@@ -86,6 +107,9 @@ def create_course(
     db.commit()
     db.refresh(course)
     return course
+
+
+# ---------- Преподаватель: свои группы, расписание, домашки ----------
 
 
 @app.get("/teacher/courses", response_model=list[schemas.CourseOut])
@@ -126,24 +150,46 @@ def add_homework(
     return item
 
 
-def check_access(course_id: int, user: models.User, db: Session) -> models.Course:
-    course = db.get(models.Course, course_id)
-    if course is None:
-        raise HTTPException(status_code=404, detail="Курс не найден")
-    if user.role == "admin" or course.teacher_id == user.id:
-        return course
-    purchase = (
-        db.query(models.Purchase)
-        .filter(
-            models.Purchase.user_id == user.id,
-            models.Purchase.course_id == course_id,
-            models.Purchase.status == "paid",
-        )
-        .first()
+@app.delete("/teacher/courses/{course_id}/schedule/{item_id}")
+def delete_schedule(
+    course_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_role("teacher", "admin")),
+):
+    get_own_course(course_id, user, db)
+    item = db.get(models.Schedule, item_id)
+    # Запись обязательно из ЭТОГО курса, иначе можно удалить чужую через свой курс
+    if item is None or item.course_id != course_id:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    db.query(models.Attendance).filter(models.Attendance.schedule_id == item_id).delete()
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/teacher/courses/{course_id}/homework/{item_id}")
+def delete_homework(
+    course_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_role("teacher", "admin")),
+):
+    get_own_course(course_id, user, db)
+    item = db.get(models.Homework, item_id)
+    if item is None or item.course_id != course_id:
+        raise HTTPException(status_code=404, detail="Домашка не найдена")
+    has_submissions = (
+        db.query(models.Submission).filter(models.Submission.homework_id == item_id).first()
     )
-    if purchase is None:
-        raise HTTPException(status_code=403, detail="Курс не куплен")
-    return course
+    if has_submissions:
+        raise HTTPException(status_code=409, detail="Нельзя удалить: ученики уже сдали работы")
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
+
+
+# ---------- Ученик: купленные курсы ----------
 
 
 @app.get("/my/courses", response_model=list[schemas.CourseOut])
@@ -157,6 +203,15 @@ def my_purchased_courses(
         .filter(models.Purchase.user_id == user.id, models.Purchase.status == "paid")
         .all()
     )
+
+
+@app.get("/courses/{course_id}", response_model=schemas.CourseOut)
+def course_detail(
+    course_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    return check_access(course_id, user, db)
 
 
 @app.get("/courses/{course_id}/schedule", response_model=list[schemas.ScheduleOut])
@@ -187,55 +242,3 @@ def course_homework(
         .order_by(models.Homework.week_number)
         .all()
     )
-
-
-@app.post("/logout")
-def logout(response: Response):
-    response.delete_cookie("access_token", httponly=True, samesite="lax", secure=COOKIE_SECURE)
-    return {"ok": True}
-
-
-@app.get("/courses/{course_id}", response_model=schemas.CourseOut)
-def course_detail(
-    course_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-):
-    return check_access(course_id, user, db)
-
-
-@app.delete("/teacher/courses/{course_id}/schedule/{item_id}")
-def delete_schedule(
-    course_id: int,
-    item_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
-):
-    get_own_course(course_id, user, db)
-    item = db.get(models.Schedule, item_id)
-    if item is None or item.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Запись не найдена")
-    db.delete(item)
-    db.commit()
-    return {"ok": True}
-
-
-@app.delete("/teacher/courses/{course_id}/homework/{item_id}")
-def delete_homework(
-    course_id: int,
-    item_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
-):
-    get_own_course(course_id, user, db)
-    item = db.get(models.Homework, item_id)
-    if item is None or item.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Домашка не найдена")
-    has_submissions = (
-        db.query(models.Submission).filter(models.Submission.homework_id == item_id).first()
-    )
-    if has_submissions:
-        raise HTTPException(status_code=409, detail="Нельзя удалить: ученики уже сдали работы")
-    db.delete(item)
-    db.commit()
-    return {"ok": True}

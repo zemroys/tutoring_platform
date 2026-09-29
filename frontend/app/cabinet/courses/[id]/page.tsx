@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AddHomeworkForm from "@/components/AddHomeworkForm";
 import AddScheduleForm from "@/components/AddScheduleForm";
+import AttendanceEditor from "@/components/AttendanceEditor";
 import CabinetHeader from "@/components/CabinetHeader";
+import ReviewSubmissions from "@/components/ReviewSubmissions";
+import StudentsProgress from "@/components/StudentsProgress";
+import SubmitHomework from "@/components/SubmitHomework";
 import {
   api,
   ApiError,
   type Course,
   type Homework,
   type ScheduleItem,
+  type StudentProgress,
+  type Submission,
+  type SubmissionForTeacher,
   type User,
 } from "@/lib/api";
 
@@ -48,40 +55,71 @@ function sortHomework(items: Homework[]): Homework[] {
   return [...items].sort((a, b) => a.week_number - b.week_number || a.id - b.id);
 }
 
-// Ближайший вебинар: первый, у которого дата ещё не прошла
-function findUpcoming(schedule: ScheduleItem[]): ScheduleItem | null {
+// Ближайший вебинар и список уже прошедших считаются в момент загрузки, а не при отрисовке
+function splitByTime(schedule: ScheduleItem[]) {
   const now = Date.now();
-  const future = schedule
-    .filter((item) => item.stream_date && new Date(item.stream_date).getTime() > now)
-    .sort((a, b) => new Date(a.stream_date!).getTime() - new Date(b.stream_date!).getTime());
-  return future[0] ?? null;
+  const time = (item: ScheduleItem) => new Date(item.stream_date!).getTime();
+  const dated = schedule.filter((item) => item.stream_date);
+  const upcoming = dated.filter((item) => time(item) > now).sort((a, b) => time(a) - time(b))[0] ?? null;
+  const pastIds = new Set(dated.filter((item) => time(item) <= now).map((item) => item.id));
+  return { upcoming, pastIds };
 }
 
 export default function CoursePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const courseId = params.id;
+
   const [me, setMe] = useState<User | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [upcoming, setUpcoming] = useState<ScheduleItem | null>(null);
+  const [pastIds, setPastIds] = useState<Set<number>>(new Set());
+  const [students, setStudents] = useState<StudentProgress[]>([]);
+  const [teacherSubs, setTeacherSubs] = useState<SubmissionForTeacher[]>([]);
+  const [mySubs, setMySubs] = useState<Submission[]>([]);
   const [error, setError] = useState("");
+
+  // Обновить активность учеников (после проверки работы или отметки присутствия)
+  const reloadStudents = useCallback(async () => {
+    try {
+      setStudents(await api<StudentProgress[]>(`/teacher/courses/${courseId}/students`));
+    } catch {
+      // не страшно: цифры обновятся при следующем открытии страницы
+    }
+  }, [courseId]);
 
   useEffect(() => {
     async function load() {
       try {
-        // Четыре запроса разом, а не по очереди: так страница открывается быстрее
         const [u, c, s, h] = await Promise.all([
           api<User>("/me"),
-          api<Course>(`/courses/${params.id}`),
-          api<ScheduleItem[]>(`/courses/${params.id}/schedule`),
-          api<Homework[]>(`/courses/${params.id}/homework`),
+          api<Course>(`/courses/${courseId}`),
+          api<ScheduleItem[]>(`/courses/${courseId}/schedule`),
+          api<Homework[]>(`/courses/${courseId}/homework`),
         ]);
+
+        if (u.role === "admin" || c.teacher_id === u.id) {
+          // Преподавателю: ученики с активностью и все работы группы
+          const [st, subs] = await Promise.all([
+            api<StudentProgress[]>(`/teacher/courses/${courseId}/students`),
+            api<SubmissionForTeacher[]>(`/teacher/courses/${courseId}/submissions`),
+          ]);
+          setStudents(st);
+          setTeacherSubs(subs);
+        } else {
+          // Ученику: только его собственные работы
+          setMySubs(await api<Submission[]>(`/courses/${courseId}/my-submissions`));
+        }
+
+        const { upcoming: next, pastIds: past } = splitByTime(s);
         setMe(u);
         setCourse(c);
         setSchedule(s);
         setHomework(h);
-        setUpcoming(findUpcoming(s));
+        setUpcoming(next);
+        setPastIds(past);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.replace("/login");
@@ -91,19 +129,22 @@ export default function CoursePage() {
       }
     }
     load();
-  }, [params.id, router]);
+  }, [courseId, router]);
 
   function updateSchedule(items: ScheduleItem[]) {
     const sorted = sortSchedule(items);
+    const { upcoming: next, pastIds: past } = splitByTime(sorted);
     setSchedule(sorted);
-    setUpcoming(findUpcoming(sorted));
+    setUpcoming(next);
+    setPastIds(past);
   }
 
   async function deleteScheduleItem(item: ScheduleItem) {
     if (!window.confirm(`Удалить вебинар недели ${item.week_number}?`)) return;
     try {
-      await api(`/teacher/courses/${params.id}/schedule/${item.id}`, { method: "DELETE" });
+      await api(`/teacher/courses/${courseId}/schedule/${item.id}`, { method: "DELETE" });
       updateSchedule(schedule.filter((s) => s.id !== item.id));
+      reloadStudents();
     } catch (err) {
       window.alert(err instanceof ApiError ? err.message : "Не удалось удалить.");
     }
@@ -112,11 +153,21 @@ export default function CoursePage() {
   async function deleteHomework(item: Homework) {
     if (!window.confirm(`Удалить домашку недели ${item.week_number}?`)) return;
     try {
-      await api(`/teacher/courses/${params.id}/homework/${item.id}`, { method: "DELETE" });
+      await api(`/teacher/courses/${courseId}/homework/${item.id}`, { method: "DELETE" });
       setHomework(homework.filter((h) => h.id !== item.id));
+      reloadStudents();
     } catch (err) {
       window.alert(err instanceof ApiError ? err.message : "Не удалось удалить.");
     }
+  }
+
+  function handleMySubmission(saved: Submission) {
+    setMySubs([...mySubs.filter((s) => s.id !== saved.id), saved]);
+  }
+
+  function handleReviewed(saved: Submission) {
+    setTeacherSubs(teacherSubs.map((s) => (s.id === saved.id ? { ...s, ...saved } : s)));
+    reloadStudents();
   }
 
   if (error) {
@@ -171,6 +222,13 @@ export default function CoursePage() {
           </section>
         )}
 
+        {canEdit && (
+          <section className="mt-14">
+            <h2 className="font-display text-3xl">Ученики группы</h2>
+            <StudentsProgress students={students} />
+          </section>
+        )}
+
         <section className="mt-14">
           <h2 className="font-display text-3xl">Расписание</h2>
           {schedule.length === 0 ? (
@@ -178,40 +236,51 @@ export default function CoursePage() {
           ) : (
             <ul className="mt-6 border-t-2 border-ink">
               {schedule.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex flex-col gap-3 border-b-2 border-ink py-5 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <p className="font-bold">Неделя {item.week_number}</p>
-                    <p className="text-muted first-letter:uppercase">{formatDate(item.stream_date)}</p>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <a
-                      href={item.webinar_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-link"
-                    >
-                      Ссылка на вебинар
-                    </a>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => deleteScheduleItem(item)}
-                        className="danger-link"
+                <li key={item.id} className="border-b-2 border-ink py-5">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-bold">Неделя {item.week_number}</p>
+                      <p className="text-muted first-letter:uppercase">
+                        {formatDate(item.stream_date)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-6">
+                      <a
+                        href={item.webinar_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-link"
                       >
-                        Удалить
-                      </button>
-                    )}
+                        Ссылка на вебинар
+                      </a>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => deleteScheduleItem(item)}
+                          className="danger-link"
+                        >
+                          Удалить
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {canEdit && pastIds.has(item.id) && (
+                    <div className="mt-3">
+                      <AttendanceEditor
+                        courseId={courseId}
+                        scheduleId={item.id}
+                        students={students}
+                        onSaved={reloadStudents}
+                      />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
           )}
           {canEdit && (
             <AddScheduleForm
-              courseId={params.id}
+              courseId={courseId}
               onAdded={(item) => updateSchedule([...schedule, item])}
             />
           )}
@@ -251,14 +320,34 @@ export default function CoursePage() {
                       <span className="text-sm text-muted">({hostOf(item.link)})</span>
                     </p>
                   )}
+
+                  {canEdit ? (
+                    <ReviewSubmissions
+                      courseId={courseId}
+                      tasksCount={item.tasks_count}
+                      submissions={teacherSubs.filter((s) => s.homework_id === item.id)}
+                      onReviewed={handleReviewed}
+                    />
+                  ) : (
+                    <SubmitHomework
+                      courseId={courseId}
+                      homeworkId={item.id}
+                      tasksCount={item.tasks_count}
+                      submission={mySubs.find((s) => s.homework_id === item.id)}
+                      onSaved={handleMySubmission}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
           )}
           {canEdit && (
             <AddHomeworkForm
-              courseId={params.id}
-              onAdded={(item) => setHomework(sortHomework([...homework, item]))}
+              courseId={courseId}
+              onAdded={(item) => {
+                setHomework(sortHomework([...homework, item]));
+                reloadStudents();
+              }}
             />
           )}
         </section>

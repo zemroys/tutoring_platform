@@ -7,6 +7,8 @@ export type User = {
   id: number;
   email: string;
   role: "student" | "teacher" | "admin";
+  first_name: string | null;
+  last_name: string | null;
 };
 
 export class ApiError extends Error {
@@ -72,4 +74,41 @@ export type Homework = {
   week_number: number;
   description: string;
   link: string | null; // ссылка на материалы, может не быть
+  tasks_count: number | null; // сколько задач, для отметок "верно/ошибка"
+};
+
+export type SubmissionStatus = "submitted" | "accepted" | "returned";
+
+// Отметка по одной задаче: верно, ошибка или ещё не отмечено
+export type TaskResult = boolean | null;
+
+export type Submission = {
+  id: number;
+  homework_id: number;
+  user_id: number;
+  link: string | null;
+  comment: string | null;
+  status: SubmissionStatus;
+  teacher_comment: string | null;
+  task_results: TaskResult[] | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+};
+
+export type SubmissionForTeacher = Submission & {
+  student_email: string;
+  student_first_name: string | null;
+  student_last_name: string | null;
+};
+
+export type StudentProgress = {
+  id: number;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  homework_done: number;
+  homework_total: number;
+  webinars_attended: number;
+  webinars_total: number;
+  activity_percent: number | null; // null, пока считать не из чего
 };
