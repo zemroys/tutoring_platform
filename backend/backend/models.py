@@ -10,6 +10,7 @@ class User(Base):
     role = Column(String, default="student")
     first_name = Column(String(50), nullable=True)
     last_name = Column(String(50), nullable=True)
+    telegram = Column(String(32), nullable=True)  # ник без @, виден только куратору и админу
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 class Course(Base):
@@ -66,3 +67,13 @@ class Attendance(Base):
     id = Column(Integer, primary_key=True, index=True)
     schedule_id = Column(Integer, ForeignKey("schedule.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+
+class QuizResult(Base):
+    """Результат опросника: какие курсы подошли ученику. Одна запись на пользователя."""
+
+    __tablename__ = "quiz_results"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    items = Column(JSON, nullable=False)  # [{"subject_id": "physics", "level": "base"}, ...]
+    updated_at = Column(TIMESTAMP, server_default=func.now())

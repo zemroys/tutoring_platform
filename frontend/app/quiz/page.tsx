@@ -6,7 +6,7 @@ import { useState } from "react";
 import Link from "next/link";
 import PageTop from "@/components/PageTop";
 import { CATALOG, LEVELS, formatPrice, type CatalogSubject, type LevelId } from "@/lib/courses";
-import { SITE } from "@/lib/site";
+import { saveQuizResult } from "@/lib/quiz";
 
 type Score = "none" | "low" | "mid" | "high";
 type Goal = "pass" | "good" | "top";
@@ -42,6 +42,7 @@ export default function QuizPage() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [done, setDone] = useState(false);
+  const [savedToAccount, setSavedToAccount] = useState(false);
 
   const chosen = CATALOG.filter((s) => selected.includes(s.id));
   const steps: Step[] = [
@@ -56,8 +57,15 @@ export default function QuizPage() {
   }
 
   function next() {
-    if (stepIndex + 1 < steps.length) setStepIndex(stepIndex + 1);
-    else setDone(true);
+    if (stepIndex + 1 < steps.length) {
+      setStepIndex(stepIndex + 1);
+      return;
+    }
+    setDone(true);
+    // Запоминаем результат, чтобы после регистрации не проходить опрос заново
+    saveQuizResult(results.map((r) => ({ subject_id: r.subject.id, level: r.level }))).then(
+      setSavedToAccount,
+    );
   }
 
   function back() {
@@ -201,15 +209,13 @@ export default function QuizPage() {
 
               <div className="card mt-8 flex flex-col items-start gap-5 bg-sun p-8">
                 <p className="text-lg">
-                  Создай аккаунт и напиши нам в{" "}
-                  <a href={SITE.contacts.telegram} className="text-link">
-                    Телеграм
-                  </a>
-                  , какие курсы тебе подошли. Подберём группу по расписанию.
+                  {savedToAccount
+                    ? "Подбор сохранён в твоём кабинете. Куратор напишет тебе в Телеграм и подберёт группу по расписанию."
+                    : "Создай аккаунт: подбор сохранится в кабинете, а куратор напишет тебе в Телеграм и подберёт группу по расписанию."}
                 </p>
                 <div className="flex flex-wrap items-center gap-5">
-                  <Link href="/register" className="btn btn-ultra">
-                    Записаться
+                  <Link href={savedToAccount ? "/cabinet" : "/register"} className="btn btn-ultra">
+                    {savedToAccount ? "В кабинет" : "Записаться"}
                   </Link>
                   <button type="button" className="text-link" onClick={back}>
                     Изменить ответы

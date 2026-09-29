@@ -9,8 +9,10 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
+import curator
 import models
 import progress
+import quiz
 import schemas
 from access import check_access, get_own_course
 from auth import (
@@ -47,6 +49,8 @@ app.add_middleware(
 
 # Сдача домашек, проверка, посещаемость и активность лежат в progress.py
 app.include_router(progress.router)
+app.include_router(quiz.router)
+app.include_router(curator.router)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -72,6 +76,7 @@ def register(request: Request, user: schemas.UserRegister, db: Session = Depends
         role="student",
         first_name=user.first_name,
         last_name=user.last_name,
+        telegram=user.telegram,
     )
     db.add(new_user)
     db.commit()
