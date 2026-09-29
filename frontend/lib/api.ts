@@ -49,3 +49,26 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (!res.ok) throw new ApiError(res.status, readError(data));
   return data as T;
 }
+
+export type Course = {
+  id: number;
+  title: string;
+  description: string | null;
+  price: number | null;
+  teacher_id: number | null;
+};
+
+export type ScheduleItem = {
+  id: number;
+  course_id: number;
+  week_number: number;
+  webinar_link: string;
+  stream_date: string | null; // дата и время, например "2026-10-05T18:00:00"
+};
+
+export type Homework = {
+  id: number;
+  course_id: number;
+  week_number: number;
+  description: string;
+};
