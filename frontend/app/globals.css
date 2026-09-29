@@ -184,3 +184,52 @@ html {
     transition: none;
   }
 }
+
+/* ---------- Формы: поля ввода и ошибки ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.field input {
+  border: 2.5px solid var(--color-ink);
+  border-radius: 0.875rem;
+  padding: 0.75rem 1rem;
+  font: inherit;
+  font-weight: 400;
+  background: #fff;
+}
+
+.field input:focus-visible {
+  outline: 3px solid var(--color-ultra);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.field-hint {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.form-error {
+  border: 2px solid var(--color-ink);
+  border-radius: 0.875rem;
+  background: #ffe3ea;
+  padding: 0.75rem 1rem;
+}
+
+.text-link {
+  color: var(--color-ultra);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}

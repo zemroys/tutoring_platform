@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -19,7 +19,8 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 
 def create_access_token(user_id: int) -> str:
@@ -29,11 +30,15 @@ def create_access_token(user_id: int) -> str:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> models.User:
+    token = credentials.credentials if credentials else request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Нужно войти")
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload["sub"])
     except (JWTError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail="Недействительный или просроченный токен")
