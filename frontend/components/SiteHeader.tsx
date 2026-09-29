@@ -10,12 +10,12 @@ export default function SiteHeader() {
       </Link>
 
       <nav className="flex items-center gap-6">
-        <a href="#subjects" className="nav-link hidden md:inline">
+        <Link href="/#subjects" className="nav-link hidden md:inline">
           Предметы
-        </a>
-        <a href="#how" className="nav-link hidden md:inline">
+        </Link>
+        <Link href="/#how" className="nav-link hidden md:inline">
           Как учимся
-        </a>
+        </Link>
         <Link href="/prices" className="nav-link hidden md:inline">
           Цены
         </Link>
