@@ -305,3 +305,44 @@ html {
   text-underline-offset: 0.2em;
   cursor: pointer;
 }
+
+/* ---------- Статусы работ и активность ---------- */
+.status-badge {
+  display: inline-block;
+  border: 2px solid var(--color-ink);
+  border-radius: 999px;
+  padding: 0.15rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- Отметки по задачам ---------- */
+.task-mark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0 0.5rem;
+  border: 2px solid var(--color-ink);
+  border-radius: 0.625rem;
+  font-weight: 700;
+}
+
+button.task-mark {
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--color-ink);
+}
+button.task-mark:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.task-legend {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 0.2rem;
+  vertical-align: -0.05rem;
+}

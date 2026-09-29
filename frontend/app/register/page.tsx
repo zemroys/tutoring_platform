@@ -8,6 +8,8 @@ import { api, ApiError, type User } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,10 +20,12 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      const body = JSON.stringify({ email, password });
       // Сначала создаём аккаунт, потом сразу входим, чтобы не заставлять вводить всё второй раз
-      await api<User>("/register", { method: "POST", body });
-      await api<User>("/login", { method: "POST", body });
+      await api<User>("/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password, first_name: firstName, last_name: lastName }),
+      });
+      await api<User>("/login", { method: "POST", body: JSON.stringify({ email, password }) });
       router.push("/cabinet");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Что-то пошло не так. Попробуй ещё раз.");
@@ -42,6 +46,30 @@ export default function RegisterPage() {
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="field">
+            <span>Имя</span>
+            <input
+              type="text"
+              autoComplete="given-name"
+              required
+              maxLength={50}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Фамилия</span>
+            <input
+              type="text"
+              autoComplete="family-name"
+              required
+              maxLength={50}
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </label>
+        </div>
         <label className="field">
           <span>Email</span>
           <input

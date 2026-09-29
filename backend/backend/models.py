@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, TIMESTAMP
+from sqlalchemy import JSON, Column, Integer, String, Text, ForeignKey, TIMESTAMP, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 
@@ -8,6 +8,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password_hash = Column(String)
     role = Column(String, default="student")
+    first_name = Column(String(50), nullable=True)
+    last_name = Column(String(50), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 class Course(Base):
@@ -40,11 +42,27 @@ class Homework(Base):
     course_id = Column(Integer, ForeignKey("courses.id"))
     week_number = Column(Integer)
     description = Column(Text)
+    link = Column(String, nullable=True)
+    tasks_count = Column(Integer, nullable=True)  # сколько задач в домашке, для отметок "верно/ошибка"
 
 class Submission(Base):
     __tablename__ = "submissions"
+    __table_args__ = (UniqueConstraint("homework_id", "user_id", name="uq_submission_homework_user"),)
     id = Column(Integer, primary_key=True, index=True)
     homework_id = Column(Integer, ForeignKey("homework.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
-    file_url = Column(String)
+    file_url = Column(String)  # на будущее, для загрузки файлов
+    link = Column(String, nullable=True)  # ссылка на решение
+    comment = Column(Text, nullable=True)  # комментарий ученика
+    status = Column(String, nullable=False, default="submitted", server_default="submitted")
+    teacher_comment = Column(Text, nullable=True)
+    task_results = Column(JSON, nullable=True)  # [true, false, null, ...]: верно / ошибка / не отмечено
     submitted_at = Column(TIMESTAMP, server_default=func.now())
+    reviewed_at = Column(TIMESTAMP, nullable=True)
+
+class Attendance(Base):
+    __tablename__ = "attendance"
+    __table_args__ = (UniqueConstraint("schedule_id", "user_id", name="uq_attendance_schedule_user"),)
+    id = Column(Integer, primary_key=True, index=True)
+    schedule_id = Column(Integer, ForeignKey("schedule.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

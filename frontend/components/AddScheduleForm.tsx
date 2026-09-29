@@ -66,9 +66,13 @@ export default function AddScheduleForm({ courseId, onAdded }: Props) {
           type="url"
           required
           placeholder="https://telemost.yandex.ru/j/..."
+          aria-describedby="webinar-hint"
           value={link}
           onChange={(e) => setLink(e.target.value)}
         />
+        <span id="webinar-hint" className="field-hint">
+          Яндекс Телемост или Microsoft Teams
+        </span>
       </label>
 
       {error && (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CabinetHeader from "@/components/CabinetHeader";
 import { api, type Course, type User } from "@/lib/api";
+import { fullName } from "@/lib/names";
 
 const ROLE_NAMES: Record<User["role"], string> = {
   student: "ученик",
@@ -46,7 +47,7 @@ export default function CabinetPage() {
       <main className="mt-8">
         <h1 className="font-display text-4xl md:text-5xl">Личный кабинет</h1>
         <p className="mt-4 text-lg text-muted">
-          {user.email}, {ROLE_NAMES[user.role]}
+          {fullName(user.first_name, user.last_name, user.email)}, {ROLE_NAMES[user.role]}
         </p>
 
         <h2 className="mt-12 text-2xl font-bold">{isStudent ? "Мои курсы" : "Мои группы"}</h2>

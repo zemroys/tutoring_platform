@@ -1,17 +1,93 @@
 import re
-from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
+from urllib.parse import urlparse
+
+from pydantic import BaseModel, Field, field_validator
+
+
+# ---------- Проверка ссылок ----------
+
+# Ссылки на вебинары: только эти сервисы и только такой вид адреса
+ALLOWED_WEBINAR_PREFIXES = {
+    "telemost.yandex.ru": "/j/",
+    "teams.live.com": "/meet/",
+}
+
+# Ссылки на материалы и решения: только облачные диски
+ALLOWED_MATERIAL_HOSTS = {
+    "disk.yandex.ru",
+    "yadi.sk",
+    "drive.google.com",
+    "docs.google.com",
+}
+
+
+def is_clean_https(parsed) -> bool:
+    # Никаких портов и логинов в ссылке: https://telemost.yandex.ru@evil.com не пройдёт
+    return (
+        parsed.scheme == "https"
+        and parsed.port is None
+        and not parsed.username
+        and not parsed.password
+    )
+
+
+def check_webinar_link(v: str) -> str:
+    v = v.strip()
+    parsed = urlparse(v)
+    prefix = ALLOWED_WEBINAR_PREFIXES.get(parsed.hostname or "")
+    if (
+        prefix is None
+        or not is_clean_https(parsed)
+        or not parsed.path.startswith(prefix)
+        or len(parsed.path) <= len(prefix)
+    ):
+        raise ValueError(
+            "Ссылка должна быть вида https://telemost.yandex.ru/j/... или https://teams.live.com/meet/..."
+        )
+    return v
+
+
+def check_material_link(v: Optional[str]) -> Optional[str]:
+    if v is None or not v.strip():
+        return None
+    v = v.strip()
+    parsed = urlparse(v)
+    if not is_clean_https(parsed) or parsed.hostname not in ALLOWED_MATERIAL_HOSTS:
+        raise ValueError("Ссылка на материалы: только Яндекс Диск или Google Диск")
+    return v
+
+
+# ---------- Имя и фамилия ----------
+
+NAME_EXTRA_CHARS = set(" -'’")
+
+
+def check_name(v: str) -> str:
+    v = " ".join(v.split())  # убираем лишние пробелы по краям и двойные внутри
+    if not v:
+        raise ValueError("Заполни имя и фамилию")
+    if len(v) > 50:
+        raise ValueError("Слишком длинное имя")
+    if not all(ch.isalpha() or ch in NAME_EXTRA_CHARS for ch in v):
+        raise ValueError("В имени и фамилии можно использовать только буквы, пробел и дефис")
+    return v
+
+
+# ---------- Пользователи ----------
 
 
 class UserRegister(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=64)
+    first_name: str
+    last_name: str
 
     @field_validator("email")
     @classmethod
     def email_format(cls, v: str) -> str:
-        pattern = r"^[^@\s]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+        pattern = r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
         if not re.match(pattern, v):
             raise ValueError("Некорректный формат email")
         return v
@@ -25,23 +101,29 @@ class UserRegister(BaseModel):
             raise ValueError("Пароль должен содержать хотя бы одну букву")
         return v
 
-    
-class UserOut(BaseModel):
-    id: int
-    email: str
-    role: str
-
-    class Config:
-        from_attributes = True
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def names_valid(cls, v: str) -> str:
+        return check_name(v)
 
 
 class UserLogin(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=64)
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    role: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Курсы, расписание, домашки ----------
 
 
 class CourseCreate(BaseModel):
@@ -49,6 +131,7 @@ class CourseCreate(BaseModel):
     description: str = ""
     price: int
     teacher_id: int
+
 
 class CourseOut(BaseModel):
     id: int
@@ -60,17 +143,17 @@ class CourseOut(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ScheduleCreate(BaseModel):
     week_number: int
-    webinar_link: str
+    webinar_link: str = Field(max_length=500)
     stream_date: Optional[datetime] = None
 
     @field_validator("webinar_link")
     @classmethod
-    def link_must_be_https(cls, v: str) -> str:
-        if not v.startswith("https://"):
-            raise ValueError("Ссылка должна начинаться с https://")
-        return v
+    def webinar_link_allowed(cls, v: str) -> str:
+        return check_webinar_link(v)
+
 
 class ScheduleOut(BaseModel):
     id: int
@@ -82,15 +165,86 @@ class ScheduleOut(BaseModel):
     class Config:
         from_attributes = True
 
+
 class HomeworkCreate(BaseModel):
     week_number: int
-    description: str
+    description: str = Field(max_length=5000)
+    link: Optional[str] = Field(default=None, max_length=500)
+    tasks_count: Optional[int] = Field(default=None, ge=1, le=50)
+
+    @field_validator("link")
+    @classmethod
+    def material_link_allowed(cls, v: Optional[str]) -> Optional[str]:
+        return check_material_link(v)
+
 
 class HomeworkOut(BaseModel):
     id: int
     course_id: int
     week_number: int
     description: str
+    link: Optional[str] = None
+    tasks_count: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+
+# ---------- Сдача домашек и активность учеников ----------
+
+
+class SubmissionCreate(BaseModel):
+    link: str = Field(max_length=500)
+    comment: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("link")
+    @classmethod
+    def solution_link_allowed(cls, v: str) -> str:
+        checked = check_material_link(v)
+        if checked is None:
+            raise ValueError("Добавь ссылку на решение")
+        return checked
+
+
+class SubmissionOut(BaseModel):
+    id: int
+    homework_id: int
+    user_id: int
+    link: Optional[str] = None
+    comment: Optional[str] = None
+    status: str
+    teacher_comment: Optional[str] = None
+    task_results: Optional[list[Optional[bool]]] = None
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SubmissionForTeacher(SubmissionOut):
+    student_email: str
+    student_first_name: Optional[str] = None
+    student_last_name: Optional[str] = None
+
+
+class ReviewCreate(BaseModel):
+    status: Literal["accepted", "returned"]
+    teacher_comment: Optional[str] = Field(default=None, max_length=2000)
+    task_results: Optional[list[Optional[bool]]] = Field(default=None, max_length=50)
+
+
+class AttendanceUpdate(BaseModel):
+    user_ids: list[int] = Field(max_length=100)
+
+
+class StudentProgressOut(BaseModel):
+    id: int
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    homework_done: int
+    homework_total: int
+    webinars_attended: int
+    webinars_total: int
+    activity_percent: Optional[int] = None  # None, пока считать не из чего
