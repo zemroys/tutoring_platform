@@ -346,3 +346,24 @@ button.task-mark:active {
   border-radius: 0.2rem;
   vertical-align: -0.05rem;
 }
+
+/* ---------- Опросник ---------- */
+.quiz-option {
+  border: 2.5px solid var(--color-ink);
+  border-radius: 1rem;
+  background: #fff;
+  padding: 1rem 1.25rem;
+  text-align: left;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, background-color 0.15s;
+}
+.quiz-option:hover {
+  box-shadow: 3px 3px 0 var(--color-ink);
+  transform: translate(-1px, -1px);
+}
+.quiz-option[aria-pressed="true"] {
+  background: var(--color-sun);
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
