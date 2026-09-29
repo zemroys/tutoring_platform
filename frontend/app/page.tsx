@@ -2,6 +2,7 @@ import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
 import GroupCall from "@/components/GroupCall";
 import { COMPARISON, SITE, STEPS, SUBJECTS } from "@/lib/site";
+import Logo from "@/components/Logo";
 
 export default function Home() {
   return (
@@ -135,7 +136,7 @@ export default function Home() {
 
       <footer className="border-t-2 border-ink">
         <div className="container-page flex flex-col gap-4 py-10 md:flex-row md:items-center md:justify-between">
-          <p className="font-display text-xl">{SITE.name}</p>
+          <Logo variant="ultra" />
           <div className="flex flex-wrap gap-6 text-muted">
             <a href={SITE.contacts.telegram} className="nav-link">
               Телеграм

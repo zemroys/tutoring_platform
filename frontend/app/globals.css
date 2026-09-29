@@ -233,3 +233,49 @@ html {
   cursor: wait;
   transform: none;
 }
+
+/* ---------- Логотип: монограмма Б² ---------- */
+.logo-mark {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding-top: 0.55rem;
+  box-sizing: border-box;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 0.75rem;
+  box-shadow: 3px 3px 0 var(--color-ink);
+  font-family: var(--font-display);
+  line-height: 1;
+}
+
+.logo-mark > span {
+  font-size: 1.4rem;
+}
+
+.logo-mark > sup {
+  margin-left: 1px;
+  font-size: 0.8rem;
+  line-height: 1;
+  vertical-align: baseline;
+  position: relative;
+  top: -0.15rem;
+}
+
+.logo-mark-ultra {
+  background: var(--color-ultra);
+  color: #fff;
+}
+.logo-mark-ultra > sup {
+  color: var(--color-sun);
+}
+
+.logo-mark-sun {
+  background: var(--color-sun);
+  color: var(--color-ink);
+}
+.logo-mark-sun > sup {
+  color: var(--color-ultra);
+}

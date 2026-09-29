@@ -1,11 +1,12 @@
 import Link from "next/link";
+import Logo from "@/components/Logo";
 import { SITE } from "@/lib/site";
 
 export default function SiteHeader() {
   return (
     <header className="flex items-center justify-between gap-6 py-6">
-      <Link href="/" className="font-display text-2xl">
-        {SITE.name}
+      <Link href="/" aria-label={`${SITE.name}, на главную`}>
+        <Logo variant="sun" />
       </Link>
 
       <nav className="flex items-center gap-6">

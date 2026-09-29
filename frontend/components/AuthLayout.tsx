@@ -1,6 +1,7 @@
 // Общий каркас для страниц входа и регистрации: синий фон, как на первом экране, и белая карточка.
 
 import Link from "next/link";
+import Logo from "@/components/Logo";
 import { SITE } from "@/lib/site";
 
 type Props = {
@@ -13,8 +14,8 @@ export default function AuthLayout({ title, children, footer }: Props) {
   return (
     <div className="min-h-screen bg-ultra pb-16 text-white">
       <div className="container-page py-6">
-        <Link href="/" className="font-display text-2xl">
-          {SITE.name}
+        <Link href="/" aria-label={`${SITE.name}, на главную`} className="inline-block">
+          <Logo variant="sun" />
         </Link>
       </div>
 

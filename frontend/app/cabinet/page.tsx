@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
 import { api, type User } from "@/lib/api";
 import { SITE } from "@/lib/site";
 
@@ -35,8 +36,8 @@ export default function CabinetPage() {
   return (
     <div className="container-page pb-20">
       <header className="flex items-center justify-between gap-6 py-6">
-        <Link href="/" className="font-display text-2xl">
-          {SITE.name}
+        <Link href="/" aria-label={`${SITE.name}, на главную`}>
+          <Logo variant="ultra" />
         </Link>
         <button type="button" onClick={handleLogout} className="btn btn-sm bg-white">
           Выйти
