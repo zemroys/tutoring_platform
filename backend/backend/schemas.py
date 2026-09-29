@@ -93,6 +93,17 @@ def check_telegram(v: str) -> str:
     return v
 
 
+# ---------- Пароль ----------
+
+
+def check_password(v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("Пароль должен быть минимум 8 символов")
+    if not any(char.isalpha() for char in v):
+        raise ValueError("Пароль должен содержать хотя бы одну букву")
+    return v
+
+
 # ---------- Пользователи ----------
 
 
@@ -114,11 +125,7 @@ class UserRegister(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Пароль должен быть минимум 8 символов")
-        if not any(char.isalpha() for char in v):
-            raise ValueError("Пароль должен содержать хотя бы одну букву")
-        return v
+        return check_password(v)
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -332,3 +339,35 @@ class CuratorCourseOut(BaseModel):
 
 class EnrollIn(BaseModel):
     user_id: int
+
+
+
+# ---------- Настройки аккаунта ----------
+
+
+class ProfileUpdate(BaseModel):
+    first_name: str
+    last_name: str
+    telegram: Optional[str] = None
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def names_valid(cls, v: str) -> str:
+        return check_name(v)
+
+    @field_validator("telegram")
+    @classmethod
+    def telegram_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        return check_telegram(v)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(max_length=64)
+    new_password: str = Field(max_length=64)
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_strength(cls, v: str) -> str:
+        return check_password(v)

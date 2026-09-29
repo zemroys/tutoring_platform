@@ -384,3 +384,10 @@ button.task-mark:active {
   outline-offset: 2px;
   box-shadow: none;
 }
+
+/* ---------- Недоступные для изменения поля ---------- */
+.field input:disabled {
+  background: var(--color-paper);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}

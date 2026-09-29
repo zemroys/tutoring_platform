@@ -4,11 +4,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from passlib.context import CryptContext
-from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
+import account
 import curator
 import models
 import progress
@@ -23,12 +22,11 @@ from auth import (
     require_role,
 )
 from database import get_db
+from rate_limit import limiter
 
 app = FastAPI()
 
-# Ограничение попыток: считаем запросы с одного IP-адреса.
-# Хранится в памяти сервера, после перезапуска счётчики обнуляются.
-limiter = Limiter(key_func=get_remote_address)
+# Ограничение попыток (настройка в rate_limit.py). Счётчики в памяти, после перезапуска обнуляются.
 app.state.limiter = limiter
 
 
@@ -51,6 +49,7 @@ app.add_middleware(
 app.include_router(progress.router)
 app.include_router(quiz.router)
 app.include_router(curator.router)
+app.include_router(account.router)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
