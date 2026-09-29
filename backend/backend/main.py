@@ -193,3 +193,12 @@ def course_homework(
 def logout(response: Response):
     response.delete_cookie("access_token", httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return {"ok": True}
+
+
+@app.get("/courses/{course_id}", response_model=schemas.CourseOut)
+def course_detail(
+    course_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    return check_access(course_id, user, db)
