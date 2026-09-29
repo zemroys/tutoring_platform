@@ -3,8 +3,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import AddHomeworkForm from "@/components/AddHomeworkForm";
+import AddScheduleForm from "@/components/AddScheduleForm";
 import CabinetHeader from "@/components/CabinetHeader";
-import { api, ApiError, type Course, type Homework, type ScheduleItem } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type Course,
+  type Homework,
+  type ScheduleItem,
+  type User,
+} from "@/lib/api";
 
 // Дата хранится без часового пояса и показывается как есть: время, которое указал преподаватель
 function formatDate(value: string | null): string {
@@ -16,6 +25,18 @@ function formatDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function sortSchedule(items: ScheduleItem[]): ScheduleItem[] {
+  return [...items].sort(
+    (a, b) =>
+      a.week_number - b.week_number ||
+      (a.stream_date ?? "").localeCompare(b.stream_date ?? ""),
+  );
+}
+
+function sortHomework(items: Homework[]): Homework[] {
+  return [...items].sort((a, b) => a.week_number - b.week_number || a.id - b.id);
 }
 
 // Ближайший вебинар: первый, у которого дата ещё не прошла
@@ -30,6 +51,7 @@ function findUpcoming(schedule: ScheduleItem[]): ScheduleItem | null {
 export default function CoursePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const [me, setMe] = useState<User | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
@@ -39,12 +61,14 @@ export default function CoursePage() {
   useEffect(() => {
     async function load() {
       try {
-        // Три запроса разом, а не по очереди: так страница открывается быстрее
-        const [c, s, h] = await Promise.all([
+        // Четыре запроса разом, а не по очереди: так страница открывается быстрее
+        const [u, c, s, h] = await Promise.all([
+          api<User>("/me"),
           api<Course>(`/courses/${params.id}`),
           api<ScheduleItem[]>(`/courses/${params.id}/schedule`),
           api<Homework[]>(`/courses/${params.id}/homework`),
         ]);
+        setMe(u);
         setCourse(c);
         setSchedule(s);
         setHomework(h);
@@ -60,6 +84,32 @@ export default function CoursePage() {
     load();
   }, [params.id, router]);
 
+  function updateSchedule(items: ScheduleItem[]) {
+    const sorted = sortSchedule(items);
+    setSchedule(sorted);
+    setUpcoming(findUpcoming(sorted));
+  }
+
+  async function deleteScheduleItem(item: ScheduleItem) {
+    if (!window.confirm(`Удалить вебинар недели ${item.week_number}?`)) return;
+    try {
+      await api(`/teacher/courses/${params.id}/schedule/${item.id}`, { method: "DELETE" });
+      updateSchedule(schedule.filter((s) => s.id !== item.id));
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : "Не удалось удалить.");
+    }
+  }
+
+  async function deleteHomework(item: Homework) {
+    if (!window.confirm(`Удалить домашку недели ${item.week_number}?`)) return;
+    try {
+      await api(`/teacher/courses/${params.id}/homework/${item.id}`, { method: "DELETE" });
+      setHomework(homework.filter((h) => h.id !== item.id));
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : "Не удалось удалить.");
+    }
+  }
+
   if (error) {
     return (
       <div className="container-page pb-20">
@@ -74,9 +124,13 @@ export default function CoursePage() {
     );
   }
 
-  if (!course) {
+  if (!course || !me) {
     return <p className="container-page py-20 text-muted">Загружаем...</p>;
   }
+
+  // Редактировать может преподаватель этой группы и админ. Сервер проверяет то же самое,
+  // здесь это только чтобы не показывать ученику формы, которыми он всё равно не сможет пользоваться.
+  const canEdit = me.role === "admin" || course.teacher_id === me.id;
 
   return (
     <div className="container-page pb-20">
@@ -123,17 +177,34 @@ export default function CoursePage() {
                     <p className="font-bold">Неделя {item.week_number}</p>
                     <p className="text-muted first-letter:uppercase">{formatDate(item.stream_date)}</p>
                   </div>
-                  <a
-                    href={item.webinar_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-link"
-                  >
-                    Ссылка на вебинар
-                  </a>
+                  <div className="flex items-center gap-6">
+                    <a
+                      href={item.webinar_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-link"
+                    >
+                      Ссылка на вебинар
+                    </a>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => deleteScheduleItem(item)}
+                        className="danger-link"
+                      >
+                        Удалить
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
+          )}
+          {canEdit && (
+            <AddScheduleForm
+              courseId={params.id}
+              onAdded={(item) => updateSchedule([...schedule, item])}
+            />
           )}
         </section>
 
@@ -145,11 +216,28 @@ export default function CoursePage() {
             <ul className="mt-6 grid gap-6">
               {homework.map((item) => (
                 <li key={item.id} className="card bg-white p-7">
-                  <p className="font-bold">Неделя {item.week_number}</p>
+                  <div className="flex items-start justify-between gap-6">
+                    <p className="font-bold">Неделя {item.week_number}</p>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => deleteHomework(item)}
+                        className="danger-link"
+                      >
+                        Удалить
+                      </button>
+                    )}
+                  </div>
                   <p className="mt-3 whitespace-pre-line leading-relaxed">{item.description}</p>
                 </li>
               ))}
             </ul>
+          )}
+          {canEdit && (
+            <AddHomeworkForm
+              courseId={params.id}
+              onAdded={(item) => setHomework(sortHomework([...homework, item]))}
+            />
           )}
         </section>
       </main>
