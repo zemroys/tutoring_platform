@@ -391,3 +391,9 @@ button.task-mark:active {
   color: var(--color-muted);
   cursor: not-allowed;
 }
+
+/* ---------- Текущий раздел в меню ---------- */
+.nav-link[aria-current="page"] {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 3px;
+}

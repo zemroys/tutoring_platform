@@ -141,6 +141,9 @@ export default function SettingsPage() {
           <label className="field">
             <span>Email</span>
             <input type="email" value={user.email} readOnly disabled aria-describedby="email-hint" />
+            <span id="email-hint" className="field-hint">
+              Email используется для входа
+            </span>
           </label>
 
           {profileError && (
