@@ -20,6 +20,8 @@ class Course(Base):
     description = Column(Text)
     price = Column(Integer)
     teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    subject_id = Column(String(30), nullable=True)  # "physics", "base-math" и т.д., как в lib/courses.ts
+    level = Column(String(10), nullable=True)  # "base" или "advanced"
 
 class Purchase(Base):
     __tablename__ = "purchases"
@@ -90,3 +92,19 @@ class UserSession(Base):
     last_used_at = Column(TIMESTAMP, nullable=True)
     expires_at = Column(TIMESTAMP, nullable=False)
     revoked_at = Column(TIMESTAMP, nullable=True)  # заполнено, если из сессии вышли
+
+
+class Payment(Base):
+    """Оплата предмета за месяц. Пока отмечается админом вручную, позже её будет создавать онлайн-касса."""
+
+    __tablename__ = "payments"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    subject_id = Column(String(30), nullable=False)
+    level = Column(String(10), nullable=False)
+    period = Column(String(7), nullable=False)  # месяц в виде "2026-10"
+    amount = Column(Integer, nullable=False)  # в рублях
+    status = Column(String(20), nullable=False, default="paid", server_default="paid")  # paid / cancelled
+    method = Column(String(20), nullable=False, default="transfer", server_default="transfer")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # кто отметил оплату
+    created_at = Column(TIMESTAMP, server_default=func.now())

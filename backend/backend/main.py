@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 import account
 import curator
 import models
+import payments
 import progress
 import quiz
 import schemas
@@ -54,6 +55,7 @@ app.include_router(progress.router)
 app.include_router(quiz.router)
 app.include_router(curator.router)
 app.include_router(account.router)
+app.include_router(payments.router)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -161,6 +163,28 @@ def create_course(
         raise HTTPException(status_code=400, detail="Преподаватель не найден")
     course = models.Course(**data.model_dump())
     db.add(course)
+    db.commit()
+    db.refresh(course)
+    return course
+
+
+@app.patch("/courses/{course_id}", response_model=schemas.CourseOut)
+def update_course(
+    course_id: int,
+    data: schemas.CourseUpdate,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_role("admin")),
+):
+    course = db.get(models.Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    changes = data.model_dump(exclude_unset=True)
+    if "teacher_id" in changes:
+        teacher = db.get(models.User, changes["teacher_id"])
+        if teacher is None or teacher.role != "teacher":
+            raise HTTPException(status_code=400, detail="Преподаватель не найден")
+    for field, value in changes.items():
+        setattr(course, field, value)
     db.commit()
     db.refresh(course)
     return course

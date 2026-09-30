@@ -27,9 +27,9 @@ export default function CabinetPage() {
     async function load() {
       try {
         const me = await api<User>("/me");
-        // У куратора своя страница: список учеников и групп
+        // У куратора нет своих групп: ему нужна только кнопка панели
         if (me.role === "curator") {
-          router.replace("/cabinet/curator");
+          setUser(me);
           return;
         }
         // Ученик видит купленные курсы, преподаватель и админ свои группы
@@ -65,15 +65,17 @@ export default function CabinetPage() {
           {fullName(user.first_name, user.last_name, user.email)}, {ROLE_NAMES[user.role]}
         </p>
 
-        {user.role === "admin" && (
-          <Link href="/cabinet/curator" className="btn btn-sun btn-sm mt-6">
+        {(user.role === "admin" || user.role === "curator") && (
+          <Link href="/cabinet/curator" className="btn btn-sun mt-8">
             Панель куратора
           </Link>
         )}
 
-        <h2 className="mt-12 text-2xl font-bold">{isStudent ? "Мои курсы" : "Мои группы"}</h2>
+        {user.role !== "curator" && (
+          <h2 className="mt-12 text-2xl font-bold">{isStudent ? "Мои курсы" : "Мои группы"}</h2>
+        )}
 
-        {courses.length === 0 ? (
+        {user.role === "curator" ? null : courses.length === 0 ? (
           <div className="card mt-6 bg-sun p-8">
             {isStudent && quiz ? (
               <>

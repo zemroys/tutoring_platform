@@ -10,6 +10,7 @@ import models
 import schemas
 from auth import require_role
 from database import get_db
+from payments import current_period, has_paid
 
 router = APIRouter()
 
@@ -38,13 +39,24 @@ def curator_students(db: Session = Depends(get_db), user: models.User = Depends(
 
     groups_by_user: dict[int, list[schemas.GroupShort]] = {}
     rows = (
-        db.query(models.Purchase.user_id, models.Course.id, models.Course.title)
+        db.query(models.Purchase.user_id, models.Course)
         .join(models.Course, models.Course.id == models.Purchase.course_id)
         .filter(models.Purchase.status == "paid")
         .all()
     )
-    for user_id, course_id, title in rows:
-        groups_by_user.setdefault(user_id, []).append(schemas.GroupShort(id=course_id, title=title))
+    for user_id, course in rows:
+        groups_by_user.setdefault(user_id, []).append(
+            schemas.GroupShort(id=course.id, title=course.title, subject_id=course.subject_id)
+        )
+
+    payments_by_user: dict[int, list[models.Payment]] = {}
+    for payment in (
+        db.query(models.Payment)
+        .filter(models.Payment.status == "paid")
+        .order_by(models.Payment.period.desc())
+        .all()
+    ):
+        payments_by_user.setdefault(payment.user_id, []).append(payment)
 
     return [
         schemas.CuratorStudentOut(
@@ -56,6 +68,7 @@ def curator_students(db: Session = Depends(get_db), user: models.User = Depends(
             created_at=s.created_at,
             quiz_items=quiz_by_user.get(s.id),
             groups=groups_by_user.get(s.id, []),
+            payments=[schemas.PaymentOut.model_validate(p) for p in payments_by_user.get(s.id, [])],
         )
         for s in students
     ]
@@ -74,6 +87,8 @@ def curator_courses(db: Session = Depends(get_db), user: models.User = Depends(c
                 id=course.id,
                 title=course.title,
                 teacher_name=teacher_name,
+                subject_id=course.subject_id,
+                level=course.level,
                 students_count=paid_count(course.id, db),
                 capacity=GROUP_CAPACITY,
             )
@@ -102,6 +117,9 @@ def enroll_student(
     )
     if purchase is not None and purchase.status == "paid":
         raise HTTPException(status_code=409, detail="Ученик уже в этой группе")
+    # В группу по предмету можно добавить только того, кто оплатил этот предмет за текущий месяц
+    if course.subject_id and not has_paid(db, student.id, course.subject_id, current_period()):
+        raise HTTPException(status_code=409, detail="Нет оплаты за этот предмет за текущий месяц")
     if paid_count(course_id, db) >= GROUP_CAPACITY:
         raise HTTPException(status_code=409, detail=f"В группе уже {GROUP_CAPACITY} человек")
 
@@ -112,7 +130,7 @@ def enroll_student(
     purchase.status = "paid"
     purchase.paid_at = datetime.now()
     db.commit()
-    return schemas.GroupShort(id=course.id, title=course.title)
+    return schemas.GroupShort(id=course.id, title=course.title, subject_id=course.subject_id)
 
 
 @router.delete("/curator/courses/{course_id}/students/{user_id}")

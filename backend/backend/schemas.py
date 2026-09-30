@@ -158,11 +158,24 @@ class UserOut(BaseModel):
 # ---------- Курсы, расписание, домашки ----------
 
 
+SUBJECT_PATTERN = r"^[a-z-]{1,30}$"
+PERIOD_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+
+
 class CourseCreate(BaseModel):
     title: str
     description: str = ""
     price: int
     teacher_id: int
+    subject_id: str = Field(pattern=SUBJECT_PATTERN)
+    level: Literal["base", "advanced"]
+
+
+class CourseUpdate(BaseModel):
+    title: Optional[str] = None
+    teacher_id: Optional[int] = None
+    subject_id: Optional[str] = Field(default=None, pattern=SUBJECT_PATTERN)
+    level: Optional[Literal["base", "advanced"]] = None
 
 
 class CourseOut(BaseModel):
@@ -171,6 +184,8 @@ class CourseOut(BaseModel):
     description: Optional[str] = None
     price: Optional[int] = None
     teacher_id: Optional[int] = None
+    subject_id: Optional[str] = None
+    level: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -316,6 +331,30 @@ class QuizLeadOut(QuizResultOut):
 class GroupShort(BaseModel):
     id: int
     title: str
+    subject_id: Optional[str] = None
+
+
+class PaymentCreate(BaseModel):
+    user_id: int
+    subject_id: str = Field(pattern=SUBJECT_PATTERN)
+    level: Literal["base", "advanced"]
+    period: str = Field(pattern=PERIOD_PATTERN)
+    amount: int = Field(ge=0, le=1_000_000)
+
+
+class PaymentOut(BaseModel):
+    id: int
+    user_id: int
+    subject_id: str
+    level: str
+    period: str
+    amount: int
+    status: str
+    method: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 class CuratorStudentOut(BaseModel):
@@ -327,12 +366,15 @@ class CuratorStudentOut(BaseModel):
     created_at: Optional[datetime] = None
     quiz_items: Optional[list[QuizItem]] = None
     groups: list[GroupShort] = []
+    payments: list[PaymentOut] = []
 
 
 class CuratorCourseOut(BaseModel):
     id: int
     title: str
     teacher_name: Optional[str] = None
+    subject_id: Optional[str] = None
+    level: Optional[str] = None
     students_count: int
     capacity: int
 

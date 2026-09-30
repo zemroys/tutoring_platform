@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from access import check_access, get_own_course, is_paid_student
+from access import check_access, get_own_course, get_staff_course, is_paid_student
 from auth import get_current_user, require_role
 from database import get_db
 
@@ -206,9 +206,9 @@ def set_attendance(
 def course_students(
     course_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
+    user: models.User = Depends(require_role("teacher", "curator", "admin")),
 ):
-    get_own_course(course_id, user, db)
+    get_staff_course(course_id, user, db)
 
     students = (
         db.query(models.User)
