@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,11 +16,14 @@ import quiz
 import schemas
 from access import check_access, get_own_course
 from auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    COOKIE_SECURE,
-    create_access_token,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    clear_auth_cookies,
+    create_session,
+    find_active_session,
     get_current_user,
     require_role,
+    revoke_user_sessions,
+    set_auth_cookies,
 )
 from database import get_db
 from rate_limit import limiter
@@ -95,21 +99,46 @@ def login(
     if not user or not pwd_context.verify(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
 
-    token = create_access_token(user.id)
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=COOKIE_SECURE,
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    session, refresh_token = create_session(db, user.id)
+    set_auth_cookies(response, user.id, session.id, refresh_token)
+    return user
+
+
+@app.post("/refresh", response_model=schemas.UserOut)
+def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Короткий токен истёк: по долгому выдаём новый и продлеваем сессию ещё на 30 дней."""
+    session = find_active_session(db, request.cookies.get("refresh_token"))
+    user = db.get(models.User, session.user_id) if session else None
+    if session is None or user is None:
+        clear_auth_cookies(response)
+        raise HTTPException(status_code=401, detail="Сессия закончилась, войди снова")
+
+    now = datetime.now()
+    session.last_used_at = now
+    session.expires_at = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    db.commit()
+    set_auth_cookies(response, user.id, session.id, request.cookies["refresh_token"])
     return user
 
 
 @app.post("/logout")
-def logout(response: Response):
-    response.delete_cookie("access_token", httponly=True, samesite="lax", secure=COOKIE_SECURE)
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    session = find_active_session(db, request.cookies.get("refresh_token"))
+    if session is not None:
+        session.revoked_at = datetime.now()
+        db.commit()
+    clear_auth_cookies(response)
+    return {"ok": True}
+
+
+@app.post("/logout-all")
+def logout_all(
+    response: Response,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    revoke_user_sessions(db, user.id)
+    clear_auth_cookies(response)
     return {"ok": True}
 
 

@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -85,6 +86,17 @@ export default function SettingsPage() {
     } finally {
       setSavingPassword(false);
     }
+  }
+
+  async function logoutEverywhere() {
+    if (!window.confirm("Выйти из аккаунта на всех устройствах, включая это?")) return;
+    setLoggingOutAll(true);
+    try {
+      await api("/logout-all", { method: "POST" });
+    } catch {
+      // даже если что-то пошло не так, уводим на вход: там будет видно, остался ли вход
+    }
+    router.push("/login");
   }
 
   if (!user) {
@@ -202,11 +214,27 @@ export default function SettingsPage() {
             </button>
             {passwordMessage && (
               <span role="status" className="font-semibold text-muted">
-                {passwordMessage}
+                {passwordMessage}. Другие устройства вышли из аккаунта
               </span>
             )}
           </div>
         </form>
+
+        <section className="card mt-8 flex flex-col items-start gap-4 bg-white p-7 md:p-9">
+          <h2 className="text-xl font-bold">Устройства</h2>
+          <p className="text-muted">
+            Если заходил в аккаунт с чужого компьютера или потерял телефон, выйди везде. После смены
+            пароля другие устройства выходят сами.
+          </p>
+          <button
+            type="button"
+            onClick={logoutEverywhere}
+            className="btn btn-sm bg-white"
+            disabled={loggingOutAll}
+          >
+            {loggingOutAll ? "Выходим..." : "Выйти на всех устройствах"}
+          </button>
+        </section>
       </main>
     </div>
   );

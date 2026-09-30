@@ -77,3 +77,16 @@ class QuizResult(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     items = Column(JSON, nullable=False)  # [{"subject_id": "physics", "level": "base"}, ...]
     updated_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class UserSession(Base):
+    """Сессия входа на одном устройстве. Хранится хеш долгого токена, не сам токен."""
+
+    __tablename__ = "sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    last_used_at = Column(TIMESTAMP, nullable=True)
+    expires_at = Column(TIMESTAMP, nullable=False)
+    revoked_at = Column(TIMESTAMP, nullable=True)  # заполнено, если из сессии вышли

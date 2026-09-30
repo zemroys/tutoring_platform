@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from auth import get_current_user
+from auth import get_current_session, get_current_user, revoke_user_sessions
 from database import get_db
 from rate_limit import limiter
 
@@ -39,6 +39,7 @@ def change_password(
     data: schemas.PasswordChange,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    session: models.UserSession = Depends(get_current_session),
 ):
     # Текущий пароль спрашиваем всегда: если кто-то сел за чужой открытый ноутбук,
     # он не сможет сменить пароль и забрать аккаунт
@@ -49,4 +50,6 @@ def change_password(
 
     user.password_hash = pwd_context.hash(data.new_password)
     db.commit()
+    # Все остальные устройства выходят из аккаунта, текущее остаётся
+    revoke_user_sessions(db, user.id, except_session_id=session.id)
     return {"ok": True}

@@ -2,7 +2,7 @@
 // Поменять название, контакты или описания можно здесь, не трогая вёрстку.
 
 export const SITE = {
-  name: "Бинамика",
+  name: "Биномика",
   contacts: {
     telegram: "https://t.me/рандоом_название", // TODO: канал
     email: "привет@example.com", // TODO: почта
