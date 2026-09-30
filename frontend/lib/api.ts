@@ -36,14 +36,41 @@ function readError(data: unknown): string {
   return "Что-то пошло не так. Попробуй ещё раз.";
 }
 
+// Запросы, после которых нельзя пытаться обновить сессию:
+// 401 на входе значит "неверный пароль", а не "истёк токен"
+const NO_REFRESH = ["/login", "/register", "/refresh", "/logout"];
+
+// Общее обновление сессии: если несколько запросов одновременно получили 401,
+// обновляем токен один раз, а остальные ждут этого же результата
+let refreshing: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = fetch(`${API_URL}/refresh`, { method: "POST", credentials: "include" })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshing = null;
+      });
+  }
+  return refreshing;
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
+  const send = () =>
+    fetch(`${API_URL}${path}`, {
       ...options,
       credentials: "include", // отправлять cookie с токеном на сервер
       headers: { "Content-Type": "application/json", ...options.headers },
     });
+
+  let res: Response;
+  try {
+    res = await send();
+    // Короткий токен истёк: тихо обновляем сессию и повторяем запрос один раз
+    if (res.status === 401 && !NO_REFRESH.includes(path) && (await refreshSession())) {
+      res = await send();
+    }
   } catch {
     throw new ApiError(0, "Не удалось связаться с сервером. Попробуй ещё раз через минуту.");
   }
