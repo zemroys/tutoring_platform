@@ -141,7 +141,19 @@ export type StudentProgress = {
   activity_percent: number | null; // null, пока считать не из чего
 };
 
-export type GroupShort = { id: number; title: string };
+export type GroupShort = { id: number; title: string; subject_id: string | null };
+
+export type Payment = {
+  id: number;
+  user_id: number;
+  subject_id: string;
+  level: "base" | "advanced";
+  period: string; // месяц, например "2026-10"
+  amount: number;
+  status: string;
+  method: string;
+  created_at: string | null;
+};
 
 export type CuratorStudent = {
   id: number;
@@ -152,12 +164,15 @@ export type CuratorStudent = {
   created_at: string | null;
   quiz_items: { subject_id: string; level: "base" | "advanced" }[] | null;
   groups: GroupShort[];
+  payments: Payment[];
 };
 
 export type CuratorCourse = {
   id: number;
   title: string;
   teacher_name: string | null;
+  subject_id: string | null;
+  level: "base" | "advanced" | null;
   students_count: number;
   capacity: number;
 };

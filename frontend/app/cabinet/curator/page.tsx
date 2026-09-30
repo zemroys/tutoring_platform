@@ -7,8 +7,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CabinetHeader from "@/components/CabinetHeader";
 import CuratorStudentCard from "@/components/CuratorStudentCard";
-import { api, ApiError, type CuratorCourse, type CuratorStudent } from "@/lib/api";
+import { api, ApiError, type CuratorCourse, type CuratorStudent, type User } from "@/lib/api";
+import { CATALOG, LEVELS } from "@/lib/courses";
 import { fullName } from "@/lib/names";
+import { currentPeriod, formatPeriod } from "@/lib/periods";
 
 function fetchCuratorData() {
   return Promise.all([
@@ -17,19 +19,25 @@ function fetchCuratorData() {
   ]);
 }
 
+const subjectName = (id: string | null) => CATALOG.find((s) => s.id === id)?.name;
+
 export default function CuratorPage() {
   const router = useRouter();
   const [students, setStudents] = useState<CuratorStudent[] | null>(null);
   const [courses, setCourses] = useState<CuratorCourse[]>([]);
   const [search, setSearch] = useState("");
   const [onlyWithoutGroup, setOnlyWithoutGroup] = useState(false);
+  const [me, setMe] = useState<User | null>(null);
+  const [period, setPeriod] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
-        const [s, c] = await fetchCuratorData();
+        const [[s, c], u] = await Promise.all([fetchCuratorData(), api<User>("/me")]);
         setStudents(s);
         setCourses(c);
+        setMe(u);
+        setPeriod(currentPeriod());
       } catch (err) {
         // Не вошёл — на вход, вошёл без прав куратора — в обычный кабинет
         router.replace(err instanceof ApiError && err.status === 401 ? "/login" : "/cabinet");
@@ -68,7 +76,11 @@ export default function CuratorPage() {
       <CabinetHeader />
 
       <main className="mt-8">
-        <h1 className="font-display text-4xl md:text-5xl">Панель куратора</h1>
+        <Link href="/cabinet" className="text-link">
+          В кабинет
+        </Link>
+        <h1 className="mt-4 font-display text-4xl md:text-5xl">Панель куратора</h1>
+        <p className="mt-3 text-muted">Текущий месяц: {period && formatPeriod(period)}</p>
 
         <section className="mt-12">
           <h2 className="font-display text-3xl">Группы</h2>
@@ -88,7 +100,12 @@ export default function CuratorPage() {
                       {c.students_count}/{c.capacity}
                     </span>
                   </div>
-                  <p className="mt-2 text-sm text-muted">{c.teacher_name ?? "Преподаватель не назначен"}</p>
+                  <p className="mt-2 text-sm text-muted">
+                    {c.subject_id
+                      ? `${subjectName(c.subject_id) ?? c.subject_id}, ${c.level ? LEVELS[c.level].name.toLowerCase() : "уровень не указан"}`
+                      : "Предмет не указан"}
+                  </p>
+                  <p className="text-sm text-muted">{c.teacher_name ?? "Преподаватель не назначен"}</p>
                 </li>
               ))}
             </ul>
@@ -123,7 +140,14 @@ export default function CuratorPage() {
 
           <ul className="mt-6 grid gap-6 lg:grid-cols-2">
             {visible.map((student) => (
-              <CuratorStudentCard key={student.id} student={student} courses={courses} onChanged={reload} />
+              <CuratorStudentCard
+                key={student.id}
+                student={student}
+                courses={courses}
+                period={period}
+                isAdmin={me?.role === "admin"}
+                onChanged={reload}
+              />
             ))}
           </ul>
         </section>

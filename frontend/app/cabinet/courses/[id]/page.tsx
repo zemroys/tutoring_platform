@@ -108,6 +108,9 @@ export default function CoursePage() {
           ]);
           setStudents(st);
           setTeacherSubs(subs);
+        } else if (u.role === "curator") {
+          // Куратору: только ученики с активностью, чтобы решать, кого куда перевести
+          setStudents(await api<StudentProgress[]>(`/teacher/courses/${courseId}/students`));
         } else {
           // Ученику: только его собственные работы
           setMySubs(await api<Submission[]>(`/courses/${courseId}/my-submissions`));
@@ -191,16 +194,21 @@ export default function CoursePage() {
   // Редактировать может преподаватель этой группы и админ. Сервер проверяет то же самое,
   // здесь это только чтобы не показывать ученику формы, которыми он всё равно не сможет пользоваться.
   const canEdit = me.role === "admin" || course.teacher_id === me.id;
+  const isCurator = me.role === "curator"; // смотрит группу, но ничего не меняет
+  const isStudent = me.role === "student";
 
   return (
     <div className="container-page pb-20">
       <CabinetHeader />
 
       <main className="mt-8">
-        <Link href="/cabinet" className="text-link">
-          Все курсы
+        <Link href={isCurator ? "/cabinet/curator" : "/cabinet"} className="text-link">
+          {isCurator ? "К панели куратора" : "Все курсы"}
         </Link>
         <h1 className="mt-4 font-display text-4xl leading-tight md:text-5xl">{course.title}</h1>
+        {isCurator && (
+          <p className="mt-3 text-muted">Режим просмотра: менять расписание и домашки может преподаватель группы.</p>
+        )}
 
         {upcoming && (
           <section className="card mt-10 flex flex-col items-start gap-6 bg-ultra p-8 text-white md:flex-row md:items-center md:justify-between">
@@ -222,7 +230,7 @@ export default function CoursePage() {
           </section>
         )}
 
-        {canEdit && (
+        {(canEdit || isCurator) && (
           <section className="mt-14">
             <h2 className="font-display text-3xl">Ученики группы</h2>
             <StudentsProgress students={students} />
@@ -328,7 +336,7 @@ export default function CoursePage() {
                       submissions={teacherSubs.filter((s) => s.homework_id === item.id)}
                       onReviewed={handleReviewed}
                     />
-                  ) : (
+                  ) : isStudent && (
                     <SubmitHomework
                       courseId={courseId}
                       homeworkId={item.id}

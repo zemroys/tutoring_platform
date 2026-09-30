@@ -31,12 +31,23 @@ def is_paid_student(course_id: int, user_id: int, db: Session) -> bool:
 
 
 def check_access(course_id: int, user: models.User, db: Session) -> models.Course:
-    """Курс, который этот человек может смотреть: купивший ученик, преподаватель курса или админ."""
+    """Курс, который этот человек может смотреть: купивший ученик, преподаватель курса, куратор или админ."""
     course = db.get(models.Course, course_id)
     if course is None:
         raise HTTPException(status_code=404, detail="Курс не найден")
-    if user.role == "admin" or course.teacher_id == user.id:
+    # Куратор смотрит любую группу, но только читает: все изменения проверяются через get_own_course
+    if user.role in ("admin", "curator") or course.teacher_id == user.id:
         return course
     if not is_paid_student(course_id, user.id, db):
         raise HTTPException(status_code=403, detail="Курс не куплен")
     return course
+
+
+def get_staff_course(course_id: int, user: models.User, db: Session) -> models.Course:
+    """Курс, учеников и активность которого можно смотреть: свой для преподавателя, любой для куратора и админа."""
+    if user.role == "curator":
+        course = db.get(models.Course, course_id)
+        if course is None:
+            raise HTTPException(status_code=404, detail="Курс не найден")
+        return course
+    return get_own_course(course_id, user, db)
