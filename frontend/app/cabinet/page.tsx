@@ -54,6 +54,9 @@ export default function CabinetPage() {
   }
 
   const isStudent = user.role === "student";
+  // Блок "Мои группы": у куратора его нет вовсе, у админа только если он сам ведёт группы
+  const showCourses =
+    user.role !== "curator" && !(user.role === "admin" && courses.length === 0);
 
   return (
     <div className="container-page pb-20">
@@ -71,11 +74,11 @@ export default function CabinetPage() {
           </Link>
         )}
 
-        {user.role !== "curator" && (
+        {showCourses && (
           <h2 className="mt-12 text-2xl font-bold">{isStudent ? "Мои курсы" : "Мои группы"}</h2>
         )}
 
-        {user.role === "curator" ? null : courses.length === 0 ? (
+        {!showCourses ? null : courses.length === 0 ? (
           <div className="card mt-6 bg-sun p-8">
             {isStudent && quiz ? (
               <>
