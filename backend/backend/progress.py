@@ -14,7 +14,8 @@ from access import (
     get_own_course,
     get_own_lesson,
     get_staff_course,
-    is_paid_student,
+    group_student_ids,
+    student_has_lesson,
 )
 from auth import get_current_user, require_role
 from database import get_db
@@ -48,8 +49,8 @@ def submit_homework(
     user: models.User = Depends(get_current_user),
 ):
     lesson = get_lesson(lesson_id, db)
-    if user.role != "student" or not is_paid_student(lesson.course_id, user.id, db):
-        raise HTTPException(status_code=403, detail="Сдавать домашку могут только ученики этой группы")
+    if user.role != "student":
+        raise HTTPException(status_code=403, detail="Сдавать домашку могут только ученики")
     check_lesson_access(lesson, user, db)
     if not (lesson.homework_text or lesson.homework_link):
         raise HTTPException(status_code=400, detail="У этого занятия нет домашки")
@@ -168,11 +169,11 @@ def set_attendance(
     db: Session = Depends(get_db),
     user: models.User = Depends(require_role("teacher", "admin")),
 ):
-    get_own_lesson(course_id, lesson_id, user, db)
+    lesson = get_own_lesson(course_id, lesson_id, user, db)
     user_ids = set(data.user_ids)
     for user_id in user_ids:
-        if not is_paid_student(course_id, user_id, db):
-            raise HTTPException(status_code=400, detail="В списке есть человек не из этой группы")
+        if not student_has_lesson(lesson, user_id, db):
+            raise HTTPException(status_code=400, detail="В списке есть ученик, который не покупал это занятие")
 
     # Присылается полный список присутствовавших: старые отметки заменяем новыми
     db.query(models.LessonAttendance).filter(models.LessonAttendance.lesson_id == lesson_id).delete()
@@ -196,23 +197,26 @@ def course_students(
 ):
     get_staff_course(course_id, user, db)
 
+    ids = group_student_ids(course_id, db)
     students = (
         db.query(models.User)
-        .join(models.Purchase, models.Purchase.user_id == models.User.id)
-        .filter(models.Purchase.course_id == course_id, models.Purchase.status == "paid")
-        .distinct()
+        .filter(models.User.id.in_(ids), models.User.role == "student")
         .order_by(models.User.last_name, models.User.first_name, models.User.email)
         .all()
+        if ids
+        else []
     )
 
     lessons = db.query(models.Lesson).filter(models.Lesson.course_id == course_id).all()
-    homework_ids = [l.id for l in lessons if l.homework_text or l.homework_link]
-    # Считаем только вебинары, которые уже прошли: будущие не должны тянуть процент вниз
     now = datetime.now()
-    past_ids = [l.id for l in lessons if l.starts_at is not None and l.starts_at < now]
 
     result = []
     for student in students:
+        # Активность считаем только по купленным занятиям: что не купил, то и не должен был делать
+        own = [l for l in lessons if student_has_lesson(l, student.id, db)]
+        homework_ids = [l.id for l in own if l.homework_text or l.homework_link]
+        # И только по прошедшим вебинарам: будущие не должны тянуть процент вниз
+        past_ids = [l.id for l in own if l.starts_at is not None and l.starts_at < now]
         homework_done = (
             db.query(models.LessonSubmission)
             .filter(

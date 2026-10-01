@@ -101,6 +101,8 @@ export type LessonSummary = {
   has_video: boolean;
   has_notes: boolean;
   has_homework: boolean;
+  has_access: boolean; // может ли текущий пользователь открыть занятие
+  seats_left: number;
 };
 
 export type Lesson = {
@@ -157,17 +159,6 @@ export type StudentProgress = {
 
 export type GroupShort = { id: number; title: string; subject_id: string | null };
 
-export type Payment = {
-  id: number;
-  user_id: number;
-  subject_id: string;
-  level: "base" | "advanced";
-  period: string; // месяц, например "2026-10"
-  amount: number;
-  status: string;
-  method: string;
-  created_at: string | null;
-};
 
 export type CuratorStudent = {
   id: number;
@@ -178,7 +169,7 @@ export type CuratorStudent = {
   created_at: string | null;
   quiz_items: { subject_id: string; level: "base" | "advanced" }[] | null;
   groups: GroupShort[];
-  payments: Payment[];
+  orders: Order[];
 };
 
 export type CuratorCourse = {
@@ -187,6 +178,54 @@ export type CuratorCourse = {
   teacher_name: string | null;
   subject_id: string | null;
   level: "base" | "advanced" | null;
-  students_count: number;
+  members_count: number;
+};
+
+// ---------- Витрина групп и заказы ----------
+
+export type CatalogCourse = {
+  id: number;
+  title: string;
+  subject_id: string | null;
+  level: "base" | "advanced" | null;
+  teacher_name: string | null;
+  month_price: number;
+  lesson_price: number;
+  is_member: boolean;
+};
+
+export type CatalogLesson = {
+  id: number;
+  number: number;
+  topic: string;
+  kind: LessonKind;
+  starts_at: string | null;
+  period: string | null;
+  seats_left: number;
+  has_access: boolean;
+};
+
+export type CatalogCourseDetail = CatalogCourse & {
   capacity: number;
+  lessons: CatalogLesson[];
+  months: string[];
+  owned_months: string[];
+};
+
+export type OrderStatus = "pending" | "paid" | "cancelled";
+
+export type Order = {
+  id: number;
+  user_id: number;
+  course_id: number;
+  course_title: string;
+  kind: "month" | "lessons";
+  period: string | null;
+  lesson_ids: number[] | null;
+  description: string;
+  amount: number;
+  status: OrderStatus;
+  method: string | null;
+  created_at: string | null;
+  paid_at: string | null;
 };

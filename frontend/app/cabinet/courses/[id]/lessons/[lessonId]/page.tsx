@@ -100,9 +100,16 @@ export default function LessonPage() {
         <CabinetHeader />
         <div className="card mt-8 bg-sun p-8">
           <p className="text-lg font-bold">{error}</p>
-          <Link href={`/cabinet/courses/${courseId}`} className="btn btn-ultra mt-6">
-            К группе
-          </Link>
+          <div className="mt-6 flex flex-wrap gap-4">
+            <Link href={`/cabinet/courses/${courseId}`} className="btn btn-ultra">
+              К группе
+            </Link>
+            {error === "Занятие не куплено" && (
+              <Link href={`/cabinet/groups/${courseId}`} className="btn bg-white">
+                Купить
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -194,7 +201,7 @@ export default function LessonPage() {
                 <a href={lesson.notes_url} target="_blank" rel="noopener noreferrer" className="btn btn-sun btn-sm">
                   Открыть конспект
                 </a>{" "}
-                {/* <span className="text-sm text-muted">({hostOf(lesson.notes_url)})</span> */}
+                <span className="text-sm text-muted">({hostOf(lesson.notes_url)})</span>
               </p>
             )}
           </section>
@@ -211,7 +218,7 @@ export default function LessonPage() {
                   <a href={lesson.homework_link} target="_blank" rel="noopener noreferrer" className="text-link">
                     Открыть материалы
                   </a>{" "}
-                  {/* <span className="text-sm text-muted">({hostOf(lesson.homework_link)})</span> */}
+                  <span className="text-sm text-muted">({hostOf(lesson.homework_link)})</span>
                 </p>
               )}
               {lesson.tasks_count && <p className="mt-3 text-sm text-muted">Задач: {lesson.tasks_count}</p>}

@@ -434,7 +434,7 @@ class CuratorStudentOut(BaseModel):
     created_at: Optional[datetime] = None
     quiz_items: Optional[list[QuizItem]] = None
     groups: list[GroupShort] = []
-    payments: list[PaymentOut] = []
+    orders: list["OrderOut"] = []
 
 
 class CuratorCourseOut(BaseModel):
@@ -443,8 +443,7 @@ class CuratorCourseOut(BaseModel):
     teacher_name: Optional[str] = None
     subject_id: Optional[str] = None
     level: Optional[str] = None
-    students_count: int
-    capacity: int
+    members_count: int
 
 
 class EnrollIn(BaseModel):
@@ -561,6 +560,8 @@ class LessonSummary(BaseModel):
     has_video: bool
     has_notes: bool
     has_homework: bool
+    has_access: bool  # может ли текущий пользователь открыть занятие
+    seats_left: int
 
 
 class LessonOut(BaseModel):
@@ -599,3 +600,69 @@ class LessonSubmissionForTeacher(LessonSubmissionOut):
     student_email: str
     student_first_name: Optional[str] = None
     student_last_name: Optional[str] = None
+
+
+# ---------- Витрина групп и заказы ----------
+
+
+class CatalogCourseOut(BaseModel):
+    id: int
+    title: str
+    subject_id: Optional[str] = None
+    level: Optional[str] = None
+    teacher_name: Optional[str] = None
+    month_price: int
+    lesson_price: int
+    is_member: bool
+
+
+class CatalogLesson(BaseModel):
+    id: int
+    number: int
+    topic: str
+    kind: str
+    starts_at: Optional[datetime] = None
+    period: Optional[str] = None
+    seats_left: int
+    has_access: bool
+
+
+class CatalogCourseDetail(CatalogCourseOut):
+    capacity: int
+    lessons: list[CatalogLesson]
+    months: list[str]  # месяцы, которые можно купить: "2026-10", ...
+    owned_months: list[str]
+
+
+class OrderCreate(BaseModel):
+    course_id: int
+    kind: Literal["month", "lessons"]
+    period: Optional[str] = Field(default=None, pattern=PERIOD_PATTERN)
+    lesson_ids: Optional[list[int]] = Field(default=None, min_length=1, max_length=20)
+
+
+class AdminOrderCreate(OrderCreate):
+    user_id: int
+
+
+class OrderOut(BaseModel):
+    id: int
+    user_id: int
+    course_id: int
+    course_title: str
+    kind: str
+    period: Optional[str] = None
+    lesson_ids: Optional[list[int]] = None
+    description: str
+    amount: int
+    status: str
+    method: Optional[str] = None
+    created_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+
+
+class OrderPaid(BaseModel):
+    method: Literal["transfer", "online"] = "transfer"
+
+
+CuratorStudentOut.model_rebuild()

@@ -12,10 +12,10 @@ import account
 import curator
 import lessons
 import models
-import payments
 import progress
 import quiz
 import schemas
+import shop
 from access import check_access
 from auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -57,7 +57,7 @@ app.include_router(progress.router)
 app.include_router(quiz.router)
 app.include_router(curator.router)
 app.include_router(account.router)
-app.include_router(payments.router)
+app.include_router(shop.router)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -211,12 +211,23 @@ def my_purchased_courses(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    return (
-        db.query(models.Course)
-        .join(models.Purchase, models.Purchase.course_id == models.Course.id)
-        .filter(models.Purchase.user_id == user.id, models.Purchase.status == "paid")
-        .all()
-    )
+    # Мои группы: где я состою или что-то купил
+    ids = {
+        m.course_id
+        for m in db.query(models.GroupMember).filter(
+            models.GroupMember.user_id == user.id, models.GroupMember.status == "active"
+        )
+    }
+    ids |= {p.course_id for p in db.query(models.MonthPass).filter(models.MonthPass.user_id == user.id)}
+    ids |= {
+        l.course_id
+        for l in db.query(models.Lesson)
+        .join(models.LessonPass, models.LessonPass.lesson_id == models.Lesson.id)
+        .filter(models.LessonPass.user_id == user.id)
+    }
+    if not ids:
+        return []
+    return db.query(models.Course).filter(models.Course.id.in_(ids)).order_by(models.Course.title).all()
 
 
 @app.get("/courses/{course_id}", response_model=schemas.CourseOut)

@@ -5,9 +5,18 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from access import check_access, check_lesson_access, get_lesson, get_own_course, get_own_lesson
+from access import (
+    can_open_lesson,
+    check_access,
+    check_lesson_access,
+    get_lesson,
+    get_own_course,
+    get_own_lesson,
+    seats_taken,
+)
 from auth import get_current_user, require_role
 from database import get_db
+from pricing import GROUP_CAPACITY
 
 router = APIRouter()
 
@@ -62,6 +71,9 @@ def course_lessons(
             has_video=bool(lesson.video_url),
             has_notes=bool(lesson.notes_url),
             has_homework=has_homework(lesson),
+            # Ученик видит все занятия группы, но открыть может только купленные
+            has_access=can_open_lesson(lesson, user, db),
+            seats_left=max(0, GROUP_CAPACITY - seats_taken(lesson, db)),
         )
         for lesson in lessons
     ]

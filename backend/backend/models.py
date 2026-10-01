@@ -98,6 +98,7 @@ class UserSession(Base):
     revoked_at = Column(TIMESTAMP, nullable=True)  # заполнено, если из сессии вышли
 
 
+# СТАРОЕ: ручные оплаты по предметам до перехода на заказы. Сайт больше не использует, удалим позже.
 class Payment(Base):
     """Оплата предмета за месяц. Пока отмечается админом вручную, позже её будет создавать онлайн-касса."""
 
@@ -160,3 +161,60 @@ class LessonAttendance(Base):
     id = Column(Integer, primary_key=True, index=True)
     lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+
+# ---------- Группы, заказы и пропуска ----------
+
+
+class GroupMember(Base):
+    """Ученик в группе: выбрал сам или назначил куратор. Само по себе доступа к занятиям не даёт."""
+
+    __tablename__ = "group_members"
+    __table_args__ = (UniqueConstraint("user_id", "course_id", name="uq_group_member"),)
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="active", server_default="active")  # active / removed
+    added_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class Order(Base):
+    """Заказ: месяц группы или отдельные занятия. Сумму считает сервер."""
+
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    kind = Column(String(10), nullable=False)  # month / lessons
+    period = Column(String(7), nullable=True)  # для месяца: "2026-10"
+    lesson_ids = Column(JSON, nullable=True)  # для отдельных занятий: [12, 15]
+    amount = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default="pending", server_default="pending")  # pending / paid / cancelled
+    method = Column(String(20), nullable=True)  # transfer / online
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    paid_at = Column(TIMESTAMP, nullable=True)
+
+
+class MonthPass(Base):
+    """Оплаченный месяц группы: доступ ко всем её занятиям в этом месяце, включая пробники."""
+
+    __tablename__ = "month_passes"
+    __table_args__ = (UniqueConstraint("user_id", "course_id", "period", name="uq_month_pass"),)
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    period = Column(String(7), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+
+
+class LessonPass(Base):
+    """Оплаченное отдельное занятие."""
+
+    __tablename__ = "lesson_passes"
+    __table_args__ = (UniqueConstraint("user_id", "lesson_id", name="uq_lesson_pass"),)
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)

@@ -122,6 +122,11 @@ export default function CoursePage() {
         {isCurator && (
           <p className="mt-3 text-muted">Режим просмотра: менять занятия может преподаватель группы.</p>
         )}
+        {isStudent && (
+          <Link href={`/cabinet/groups/${courseId}`} className="btn btn-sun btn-sm mt-5">
+            Купить занятия
+          </Link>
+        )}
 
         {upcoming && (
           <section className="card mt-10 flex flex-col items-start gap-6 bg-ultra p-8 text-white md:flex-row md:items-center md:justify-between">
@@ -172,6 +177,8 @@ export default function CoursePage() {
                     has_video: Boolean(saved.video_url),
                     has_notes: Boolean(saved.notes_url),
                     has_homework: Boolean(saved.homework_text || saved.homework_link),
+                    has_access: true,
+                    seats_left: 6,
                   };
                   const sorted = sortLessons([...lessons, summary]);
                   setLessons(sorted);
@@ -194,8 +201,12 @@ export default function CoursePage() {
                 return (
                   <li key={lesson.id}>
                     <Link
-                      href={`/cabinet/courses/${courseId}/lessons/${lesson.id}`}
-                      className="lesson-row"
+                      href={
+                        lesson.has_access
+                          ? `/cabinet/courses/${courseId}/lessons/${lesson.id}`
+                          : `/cabinet/groups/${courseId}`
+                      }
+                      className={`lesson-row ${lesson.has_access ? "" : "lesson-locked"}`}
                     >
                       <span className="lesson-number" aria-hidden="true">
                         {lesson.number}
@@ -210,13 +221,16 @@ export default function CoursePage() {
                         </span>
                       </span>
                       <span className="flex flex-wrap items-center justify-end gap-2">
+                        {!lesson.has_access && <span className="status-badge bg-white">🔒 Не куплено</span>}
                         {lesson.kind === "mock" && <span className="status-badge bg-bubble">Пробник</span>}
                         {lesson.has_video && <span className="status-badge bg-white">Видео</span>}
                         {lesson.has_notes && <span className="status-badge bg-white">Конспект</span>}
                         {lesson.has_homework && !isStudent && (
                           <span className="status-badge bg-white">Домашка</span>
                         )}
-                        {lesson.has_homework && isStudent && <StatusBadge status={mine?.status ?? "none"} />}
+                        {lesson.has_homework && isStudent && lesson.has_access && (
+                          <StatusBadge status={mine?.status ?? "none"} />
+                        )}
                         {toReview > 0 && <span className="status-badge bg-sky">На проверке: {toReview}</span>}
                       </span>
                     </Link>

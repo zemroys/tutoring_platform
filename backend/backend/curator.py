@@ -1,7 +1,5 @@
-# Куратор: видит учеников с контактами и результатом опроса, добавляет их в группы и убирает из групп.
-# Добавление в группу = оплаченная покупка курса (пока нет онлайн-оплаты, так оформляются оплаты переводом).
-
-from datetime import datetime
+# Куратор: видит учеников с контактами, подбором и заказами и распределяет их по группам.
+# Добавление в группу — это "твоя группа", доступ к занятиям дают только оплаченные заказы.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,21 +8,11 @@ import models
 import schemas
 from auth import require_role
 from database import get_db
-from payments import current_period, has_paid
+from shop import ensure_member, order_out, teacher_name
 
 router = APIRouter()
 
-GROUP_CAPACITY = 6  # максимум учеников в группе
-
 curator_only = require_role("curator", "admin")
-
-
-def paid_count(course_id: int, db: Session) -> int:
-    return (
-        db.query(models.Purchase)
-        .filter(models.Purchase.course_id == course_id, models.Purchase.status == "paid")
-        .count()
-    )
 
 
 @router.get("/curator/students", response_model=list[schemas.CuratorStudentOut])
@@ -38,25 +26,22 @@ def curator_students(db: Session = Depends(get_db), user: models.User = Depends(
     quiz_by_user = {q.user_id: q.items for q in db.query(models.QuizResult).all()}
 
     groups_by_user: dict[int, list[schemas.GroupShort]] = {}
-    rows = (
-        db.query(models.Purchase.user_id, models.Course)
-        .join(models.Course, models.Course.id == models.Purchase.course_id)
-        .filter(models.Purchase.status == "paid")
-        .all()
-    )
-    for user_id, course in rows:
-        groups_by_user.setdefault(user_id, []).append(
+    for member, course in (
+        db.query(models.GroupMember, models.Course)
+        .join(models.Course, models.Course.id == models.GroupMember.course_id)
+        .filter(models.GroupMember.status == "active")
+    ):
+        groups_by_user.setdefault(member.user_id, []).append(
             schemas.GroupShort(id=course.id, title=course.title, subject_id=course.subject_id)
         )
 
-    payments_by_user: dict[int, list[models.Payment]] = {}
-    for payment in (
-        db.query(models.Payment)
-        .filter(models.Payment.status == "paid")
-        .order_by(models.Payment.period.desc())
-        .all()
+    orders_by_user: dict[int, list[schemas.OrderOut]] = {}
+    for order in (
+        db.query(models.Order)
+        .filter(models.Order.status != "cancelled")
+        .order_by(models.Order.created_at.desc(), models.Order.id.desc())
     ):
-        payments_by_user.setdefault(payment.user_id, []).append(payment)
+        orders_by_user.setdefault(order.user_id, []).append(order_out(order, db))
 
     return [
         schemas.CuratorStudentOut(
@@ -68,7 +53,7 @@ def curator_students(db: Session = Depends(get_db), user: models.User = Depends(
             created_at=s.created_at,
             quiz_items=quiz_by_user.get(s.id),
             groups=groups_by_user.get(s.id, []),
-            payments=[schemas.PaymentOut.model_validate(p) for p in payments_by_user.get(s.id, [])],
+            orders=orders_by_user.get(s.id, []),
         )
         for s in students
     ]
@@ -78,26 +63,26 @@ def curator_students(db: Session = Depends(get_db), user: models.User = Depends(
 def curator_courses(db: Session = Depends(get_db), user: models.User = Depends(curator_only)):
     result = []
     for course in db.query(models.Course).order_by(models.Course.title).all():
-        teacher = db.get(models.User, course.teacher_id) if course.teacher_id else None
-        teacher_name = None
-        if teacher:
-            teacher_name = " ".join(filter(None, [teacher.last_name, teacher.first_name])) or teacher.email
+        members = (
+            db.query(models.GroupMember)
+            .filter(models.GroupMember.course_id == course.id, models.GroupMember.status == "active")
+            .count()
+        )
         result.append(
             schemas.CuratorCourseOut(
                 id=course.id,
                 title=course.title,
-                teacher_name=teacher_name,
+                teacher_name=teacher_name(course, db),
                 subject_id=course.subject_id,
                 level=course.level,
-                students_count=paid_count(course.id, db),
-                capacity=GROUP_CAPACITY,
+                members_count=members,
             )
         )
     return result
 
 
 @router.post("/curator/courses/{course_id}/students", response_model=schemas.GroupShort)
-def enroll_student(
+def add_to_group(
     course_id: int,
     data: schemas.EnrollIn,
     db: Session = Depends(get_db),
@@ -109,49 +94,37 @@ def enroll_student(
     student = db.get(models.User, data.user_id)
     if student is None or student.role != "student":
         raise HTTPException(status_code=400, detail="Ученик не найден")
-
-    purchase = (
-        db.query(models.Purchase)
-        .filter(models.Purchase.user_id == student.id, models.Purchase.course_id == course_id)
+    existing = (
+        db.query(models.GroupMember)
+        .filter(models.GroupMember.course_id == course_id, models.GroupMember.user_id == student.id)
         .first()
     )
-    if purchase is not None and purchase.status == "paid":
+    if existing is not None and existing.status == "active":
         raise HTTPException(status_code=409, detail="Ученик уже в этой группе")
-    # В группу по предмету можно добавить только того, кто оплатил этот предмет за текущий месяц
-    if course.subject_id and not has_paid(db, student.id, course.subject_id, current_period()):
-        raise HTTPException(status_code=409, detail="Нет оплаты за этот предмет за текущий месяц")
-    if paid_count(course_id, db) >= GROUP_CAPACITY:
-        raise HTTPException(status_code=409, detail=f"В группе уже {GROUP_CAPACITY} человек")
-
-    # Если ученика раньше убирали из этой группы, возвращаем ту же запись, а не создаём вторую
-    if purchase is None:
-        purchase = models.Purchase(user_id=student.id, course_id=course_id)
-        db.add(purchase)
-    purchase.status = "paid"
-    purchase.paid_at = datetime.now()
+    ensure_member(course_id, student.id, user.id, db)
     db.commit()
     return schemas.GroupShort(id=course.id, title=course.title, subject_id=course.subject_id)
 
 
 @router.delete("/curator/courses/{course_id}/students/{user_id}")
-def remove_student(
+def remove_from_group(
     course_id: int,
     user_id: int,
     db: Session = Depends(get_db),
     user: models.User = Depends(curator_only),
 ):
-    purchase = (
-        db.query(models.Purchase)
+    member = (
+        db.query(models.GroupMember)
         .filter(
-            models.Purchase.user_id == user_id,
-            models.Purchase.course_id == course_id,
-            models.Purchase.status == "paid",
+            models.GroupMember.course_id == course_id,
+            models.GroupMember.user_id == user_id,
+            models.GroupMember.status == "active",
         )
         .first()
     )
-    if purchase is None:
+    if member is None:
         raise HTTPException(status_code=404, detail="Ученика нет в этой группе")
-    # Не удаляем запись, а меняем статус: история сохраняется, а доступ пропадает сразу
-    purchase.status = "removed"
+    # Оплаченные пропуска не трогаем: за них заплачено. Убирается только "моя группа"
+    member.status = "removed"
     db.commit()
     return {"ok": True}
