@@ -88,21 +88,35 @@ export type Course = {
   teacher_id: number | null;
 };
 
-export type ScheduleItem = {
+export type LessonKind = "lesson" | "mock";
+
+// Строка в списке занятий: без ссылок, только что есть у занятия
+export type LessonSummary = {
   id: number;
   course_id: number;
-  week_number: number;
-  webinar_link: string;
-  stream_date: string | null; // дата и время, например "2026-10-05T18:00:00"
+  number: number;
+  topic: string;
+  kind: LessonKind;
+  starts_at: string | null; // дата и время вебинара, например "2026-10-05T18:00:00"
+  has_video: boolean;
+  has_notes: boolean;
+  has_homework: boolean;
 };
 
-export type Homework = {
+export type Lesson = {
   id: number;
   course_id: number;
-  week_number: number;
-  description: string;
-  link: string | null; // ссылка на материалы, может не быть
-  tasks_count: number | null; // сколько задач, для отметок "верно/ошибка"
+  number: number;
+  topic: string;
+  kind: LessonKind;
+  starts_at: string | null;
+  webinar_link: string | null;
+  video_url: string | null;
+  video_embed_url: string | null; // адрес плеера, его собирает сервер из проверенной ссылки
+  notes_url: string | null;
+  homework_text: string | null;
+  homework_link: string | null;
+  tasks_count: number | null;
 };
 
 export type SubmissionStatus = "submitted" | "accepted" | "returned";
@@ -112,7 +126,7 @@ export type TaskResult = boolean | null;
 
 export type Submission = {
   id: number;
-  homework_id: number;
+  lesson_id: number;
   user_id: number;
   link: string | null;
   comment: string | null;

@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 
 import account
 import curator
+import lessons
 import models
 import payments
 import progress
 import quiz
 import schemas
-from access import check_access, get_own_course
+from access import check_access
 from auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     clear_auth_cookies,
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 # Сдача домашек, проверка, посещаемость и активность лежат в progress.py
+app.include_router(lessons.router)
 app.include_router(progress.router)
 app.include_router(quiz.router)
 app.include_router(curator.router)
@@ -201,75 +203,6 @@ def my_courses(
     return db.query(models.Course).filter(models.Course.teacher_id == user.id).all()
 
 
-@app.post("/teacher/courses/{course_id}/schedule", response_model=schemas.ScheduleOut)
-def add_schedule(
-    course_id: int,
-    data: schemas.ScheduleCreate,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
-):
-    get_own_course(course_id, user, db)
-    item = models.Schedule(course_id=course_id, **data.model_dump())
-    db.add(item)
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@app.post("/teacher/courses/{course_id}/homework", response_model=schemas.HomeworkOut)
-def add_homework(
-    course_id: int,
-    data: schemas.HomeworkCreate,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
-):
-    get_own_course(course_id, user, db)
-    item = models.Homework(course_id=course_id, **data.model_dump())
-    db.add(item)
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@app.delete("/teacher/courses/{course_id}/schedule/{item_id}")
-def delete_schedule(
-    course_id: int,
-    item_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
-):
-    get_own_course(course_id, user, db)
-    item = db.get(models.Schedule, item_id)
-    # Запись обязательно из ЭТОГО курса, иначе можно удалить чужую через свой курс
-    if item is None or item.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Запись не найдена")
-    db.query(models.Attendance).filter(models.Attendance.schedule_id == item_id).delete()
-    db.delete(item)
-    db.commit()
-    return {"ok": True}
-
-
-@app.delete("/teacher/courses/{course_id}/homework/{item_id}")
-def delete_homework(
-    course_id: int,
-    item_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(require_role("teacher", "admin")),
-):
-    get_own_course(course_id, user, db)
-    item = db.get(models.Homework, item_id)
-    if item is None or item.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Домашка не найдена")
-    has_submissions = (
-        db.query(models.Submission).filter(models.Submission.homework_id == item_id).first()
-    )
-    if has_submissions:
-        raise HTTPException(status_code=409, detail="Нельзя удалить: ученики уже сдали работы")
-    db.delete(item)
-    db.commit()
-    return {"ok": True}
-
-
 # ---------- Ученик: купленные курсы ----------
 
 
@@ -293,33 +226,3 @@ def course_detail(
     user: models.User = Depends(get_current_user),
 ):
     return check_access(course_id, user, db)
-
-
-@app.get("/courses/{course_id}/schedule", response_model=list[schemas.ScheduleOut])
-def course_schedule(
-    course_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-):
-    check_access(course_id, user, db)
-    return (
-        db.query(models.Schedule)
-        .filter(models.Schedule.course_id == course_id)
-        .order_by(models.Schedule.week_number, models.Schedule.stream_date)
-        .all()
-    )
-
-
-@app.get("/courses/{course_id}/homework", response_model=list[schemas.HomeworkOut])
-def course_homework(
-    course_id: int,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-):
-    check_access(course_id, user, db)
-    return (
-        db.query(models.Homework)
-        .filter(models.Homework.course_id == course_id)
-        .order_by(models.Homework.week_number)
-        .all()
-    )

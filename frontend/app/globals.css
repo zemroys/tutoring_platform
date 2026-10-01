@@ -397,3 +397,57 @@ button.task-mark:active {
   text-decoration-color: currentColor;
   text-decoration-thickness: 3px;
 }
+
+/* ---------- Занятия ---------- */
+.lesson-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 1.25rem;
+  background: #fff;
+  padding: 1.1rem 1.4rem;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.lesson-row:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+.lesson-number {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 0.75rem;
+  background: var(--color-sun);
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
+/* Плеер 16:9, растягивается по ширине */
+.video-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 2.5px solid var(--color-ink);
+  border-radius: 1.25rem;
+  box-shadow: 6px 6px 0 var(--color-ink);
+  background: var(--color-ink);
+}
+.video-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lesson-row {
+    transition: none;
+  }
+}
