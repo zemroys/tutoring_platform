@@ -1,4 +1,4 @@
-# Сдача домашек, проверка, посещаемость вебинаров и активность учеников.
+# Сдача домашек по занятиям, проверка, посещаемость вебинаров и активность учеников.
 
 from datetime import datetime
 
@@ -7,32 +7,25 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from access import check_access, get_own_course, get_staff_course, is_paid_student
+from access import (
+    check_access,
+    check_lesson_access,
+    get_lesson,
+    get_own_course,
+    get_own_lesson,
+    get_staff_course,
+    is_paid_student,
+)
 from auth import get_current_user, require_role
 from database import get_db
 
 router = APIRouter()
 
 
-def get_course_homework(course_id: int, homework_id: int, db: Session) -> models.Homework:
-    # Домашка обязательно из ЭТОГО курса: иначе можно было бы подставить id чужой домашки
-    homework = db.get(models.Homework, homework_id)
-    if homework is None or homework.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Домашка не найдена")
-    return homework
-
-
-def get_course_schedule_item(course_id: int, item_id: int, db: Session) -> models.Schedule:
-    item = db.get(models.Schedule, item_id)
-    if item is None or item.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Вебинар не найден")
-    return item
-
-
 # ---------- Ученик ----------
 
 
-@router.get("/courses/{course_id}/my-submissions", response_model=list[schemas.SubmissionOut])
+@router.get("/courses/{course_id}/my-submissions", response_model=list[schemas.LessonSubmissionOut])
 def my_submissions(
     course_id: int,
     db: Session = Depends(get_db),
@@ -40,47 +33,44 @@ def my_submissions(
 ):
     check_access(course_id, user, db)
     return (
-        db.query(models.Submission)
-        .join(models.Homework, models.Homework.id == models.Submission.homework_id)
-        .filter(models.Homework.course_id == course_id, models.Submission.user_id == user.id)
+        db.query(models.LessonSubmission)
+        .join(models.Lesson, models.Lesson.id == models.LessonSubmission.lesson_id)
+        .filter(models.Lesson.course_id == course_id, models.LessonSubmission.user_id == user.id)
         .all()
     )
 
 
-@router.put(
-    "/courses/{course_id}/homework/{homework_id}/submission",
-    response_model=schemas.SubmissionOut,
-)
+@router.put("/lessons/{lesson_id}/submission", response_model=schemas.LessonSubmissionOut)
 def submit_homework(
-    course_id: int,
-    homework_id: int,
+    lesson_id: int,
     data: schemas.SubmissionCreate,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    if not is_paid_student(course_id, user.id, db):
+    lesson = get_lesson(lesson_id, db)
+    if user.role != "student" or not is_paid_student(lesson.course_id, user.id, db):
         raise HTTPException(status_code=403, detail="Сдавать домашку могут только ученики этой группы")
-    get_course_homework(course_id, homework_id, db)
+    check_lesson_access(lesson, user, db)
+    if not (lesson.homework_text or lesson.homework_link):
+        raise HTTPException(status_code=400, detail="У этого занятия нет домашки")
 
     submission = (
-        db.query(models.Submission)
-        .filter(models.Submission.homework_id == homework_id, models.Submission.user_id == user.id)
+        db.query(models.LessonSubmission)
+        .filter(models.LessonSubmission.lesson_id == lesson_id, models.LessonSubmission.user_id == user.id)
         .first()
     )
     if submission is not None and submission.status == "accepted":
         raise HTTPException(status_code=409, detail="Работа уже принята, менять её нельзя")
     if submission is None:
-        submission = models.Submission(homework_id=homework_id, user_id=user.id)
+        submission = models.LessonSubmission(lesson_id=lesson_id, user_id=user.id)
         db.add(submission)
 
-    # Повторная сдача после "на доработку" снова уходит на проверку.
-    # Комментарий и отметки преподавателя не стираем: ученик видит, что исправляет,
-    # а преподаватель при повторной проверке начинает с прошлых отметок.
+    # Повторная сдача снова уходит на проверку. Комментарий и отметки преподавателя сохраняем:
+    # ученик видит, что исправляет, а преподаватель начинает с прошлых отметок.
     submission.link = data.link
     submission.comment = data.comment
     submission.status = "submitted"
     submission.submitted_at = datetime.now()
-    submission.reviewed_at = None
     db.commit()
     db.refresh(submission)
     return submission
@@ -91,7 +81,7 @@ def submit_homework(
 
 @router.get(
     "/teacher/courses/{course_id}/submissions",
-    response_model=list[schemas.SubmissionForTeacher],
+    response_model=list[schemas.LessonSubmissionForTeacher],
 )
 def course_submissions(
     course_id: int,
@@ -100,16 +90,16 @@ def course_submissions(
 ):
     get_own_course(course_id, user, db)
     rows = (
-        db.query(models.Submission, models.User)
-        .join(models.Homework, models.Homework.id == models.Submission.homework_id)
-        .join(models.User, models.User.id == models.Submission.user_id)
-        .filter(models.Homework.course_id == course_id)
-        .order_by(models.Submission.submitted_at.desc())
+        db.query(models.LessonSubmission, models.User)
+        .join(models.Lesson, models.Lesson.id == models.LessonSubmission.lesson_id)
+        .join(models.User, models.User.id == models.LessonSubmission.user_id)
+        .filter(models.Lesson.course_id == course_id)
+        .order_by(models.LessonSubmission.submitted_at.desc())
         .all()
     )
     return [
-        schemas.SubmissionForTeacher(
-            **schemas.SubmissionOut.model_validate(submission).model_dump(),
+        schemas.LessonSubmissionForTeacher(
+            **schemas.LessonSubmissionOut.model_validate(submission).model_dump(),
             student_email=student.email,
             student_first_name=student.first_name,
             student_last_name=student.last_name,
@@ -120,7 +110,7 @@ def course_submissions(
 
 @router.post(
     "/teacher/courses/{course_id}/submissions/{submission_id}/review",
-    response_model=schemas.SubmissionOut,
+    response_model=schemas.LessonSubmissionOut,
 )
 def review_submission(
     course_id: int,
@@ -130,15 +120,14 @@ def review_submission(
     user: models.User = Depends(require_role("teacher", "admin")),
 ):
     get_own_course(course_id, user, db)
-    submission = db.get(models.Submission, submission_id)
-    homework = db.get(models.Homework, submission.homework_id) if submission else None
-    # Работа должна относиться к ЭТОМУ курсу, иначе можно проверять чужие работы
-    if submission is None or homework is None or homework.course_id != course_id:
+    submission = db.get(models.LessonSubmission, submission_id)
+    lesson = db.get(models.Lesson, submission.lesson_id) if submission else None
+    # Работа должна относиться к ЭТОЙ группе, иначе можно проверять чужие работы
+    if submission is None or lesson is None or lesson.course_id != course_id:
         raise HTTPException(status_code=404, detail="Работа не найдена")
 
-    # Отметок по задачам должно быть ровно столько, сколько задач в домашке
     if data.task_results is not None:
-        if homework.tasks_count is None or len(data.task_results) != homework.tasks_count:
+        if lesson.tasks_count is None or len(data.task_results) != lesson.tasks_count:
             raise HTTPException(status_code=400, detail="Количество отметок не совпадает с количеством задач")
 
     submission.status = data.status
@@ -154,49 +143,46 @@ def review_submission(
 
 
 @router.get(
-    "/teacher/courses/{course_id}/schedule/{item_id}/attendance",
+    "/teacher/courses/{course_id}/lessons/{lesson_id}/attendance",
     response_model=list[int],
 )
 def get_attendance(
     course_id: int,
-    item_id: int,
+    lesson_id: int,
     db: Session = Depends(get_db),
     user: models.User = Depends(require_role("teacher", "admin")),
 ):
-    get_own_course(course_id, user, db)
-    get_course_schedule_item(course_id, item_id, db)
-    rows = db.query(models.Attendance).filter(models.Attendance.schedule_id == item_id).all()
+    get_own_lesson(course_id, lesson_id, user, db)
+    rows = db.query(models.LessonAttendance).filter(models.LessonAttendance.lesson_id == lesson_id).all()
     return [row.user_id for row in rows]
 
 
 @router.put(
-    "/teacher/courses/{course_id}/schedule/{item_id}/attendance",
+    "/teacher/courses/{course_id}/lessons/{lesson_id}/attendance",
     response_model=list[int],
 )
 def set_attendance(
     course_id: int,
-    item_id: int,
+    lesson_id: int,
     data: schemas.AttendanceUpdate,
     db: Session = Depends(get_db),
     user: models.User = Depends(require_role("teacher", "admin")),
 ):
-    get_own_course(course_id, user, db)
-    get_course_schedule_item(course_id, item_id, db)
-
+    get_own_lesson(course_id, lesson_id, user, db)
     user_ids = set(data.user_ids)
     for user_id in user_ids:
         if not is_paid_student(course_id, user_id, db):
             raise HTTPException(status_code=400, detail="В списке есть человек не из этой группы")
 
     # Присылается полный список присутствовавших: старые отметки заменяем новыми
-    db.query(models.Attendance).filter(models.Attendance.schedule_id == item_id).delete()
+    db.query(models.LessonAttendance).filter(models.LessonAttendance.lesson_id == lesson_id).delete()
     for user_id in user_ids:
-        db.add(models.Attendance(schedule_id=item_id, user_id=user_id))
+        db.add(models.LessonAttendance(lesson_id=lesson_id, user_id=user_id))
     db.commit()
     return sorted(user_ids)
 
 
-# ---------- Преподаватель: ученики и их активность ----------
+# ---------- Ученики группы и их активность ----------
 
 
 @router.get(
@@ -219,48 +205,42 @@ def course_students(
         .all()
     )
 
-    homework_total = db.query(models.Homework).filter(models.Homework.course_id == course_id).count()
-
+    lessons = db.query(models.Lesson).filter(models.Lesson.course_id == course_id).all()
+    homework_ids = [l.id for l in lessons if l.homework_text or l.homework_link]
     # Считаем только вебинары, которые уже прошли: будущие не должны тянуть процент вниз
-    past_webinar_ids = [
-        row.id
-        for row in db.query(models.Schedule.id).filter(
-            models.Schedule.course_id == course_id,
-            models.Schedule.stream_date.isnot(None),
-            models.Schedule.stream_date < datetime.now(),
-        )
-    ]
-    webinars_total = len(past_webinar_ids)
+    now = datetime.now()
+    past_ids = [l.id for l in lessons if l.starts_at is not None and l.starts_at < now]
 
     result = []
     for student in students:
         homework_done = (
-            db.query(models.Submission)
-            .join(models.Homework, models.Homework.id == models.Submission.homework_id)
+            db.query(models.LessonSubmission)
             .filter(
-                models.Homework.course_id == course_id,
-                models.Submission.user_id == student.id,
-                models.Submission.status == "accepted",
+                models.LessonSubmission.user_id == student.id,
+                models.LessonSubmission.lesson_id.in_(homework_ids),
+                models.LessonSubmission.status == "accepted",
             )
             .count()
+            if homework_ids
+            else 0
         )
         webinars_attended = (
-            db.query(models.Attendance)
+            db.query(models.LessonAttendance)
             .filter(
-                models.Attendance.user_id == student.id,
-                models.Attendance.schedule_id.in_(past_webinar_ids),
+                models.LessonAttendance.user_id == student.id,
+                models.LessonAttendance.lesson_id.in_(past_ids),
             )
             .count()
-            if past_webinar_ids
+            if past_ids
             else 0
         )
 
         # Домашки и вебинары весят поровну. Если чего-то ещё нет, считаем по тому, что есть
         parts = []
-        if homework_total:
-            parts.append(homework_done / homework_total)
-        if webinars_total:
-            parts.append(webinars_attended / webinars_total)
+        if homework_ids:
+            parts.append(homework_done / len(homework_ids))
+        if past_ids:
+            parts.append(webinars_attended / len(past_ids))
         percent = round(sum(parts) / len(parts) * 100) if parts else None
 
         result.append(
@@ -270,9 +250,9 @@ def course_students(
                 first_name=student.first_name,
                 last_name=student.last_name,
                 homework_done=homework_done,
-                homework_total=homework_total,
+                homework_total=len(homework_ids),
                 webinars_attended=webinars_attended,
-                webinars_total=webinars_total,
+                webinars_total=len(past_ids),
                 activity_percent=percent,
             )
         )

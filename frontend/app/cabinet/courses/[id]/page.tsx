@@ -1,68 +1,39 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+// Страница группы: ближайшее занятие, ученики (для преподавателя и куратора) и список занятий.
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import AddHomeworkForm from "@/components/AddHomeworkForm";
-import AddScheduleForm from "@/components/AddScheduleForm";
-import AttendanceEditor from "@/components/AttendanceEditor";
 import CabinetHeader from "@/components/CabinetHeader";
-import ReviewSubmissions from "@/components/ReviewSubmissions";
+import LessonForm from "@/components/LessonForm";
+import StatusBadge from "@/components/StatusBadge";
 import StudentsProgress from "@/components/StudentsProgress";
-import SubmitHomework from "@/components/SubmitHomework";
 import {
   api,
   ApiError,
   type Course,
-  type Homework,
-  type ScheduleItem,
+  type LessonSummary,
   type StudentProgress,
   type Submission,
   type SubmissionForTeacher,
   type User,
 } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates";
 
-// Дата хранится без часового пояса и показывается как есть: время, которое указал преподаватель
-function formatDate(value: string | null): string {
-  if (!value) return "время уточняется";
-  return new Date(value).toLocaleString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-// Показываем ученику, на какой сайт ведёт ссылка, прежде чем он по ней нажмёт
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "";
-  }
-}
-
-function sortSchedule(items: ScheduleItem[]): ScheduleItem[] {
-  return [...items].sort(
-    (a, b) =>
-      a.week_number - b.week_number ||
-      (a.stream_date ?? "").localeCompare(b.stream_date ?? ""),
+// Ближайшее занятие считаем в момент загрузки, а не при отрисовке
+function findUpcoming(lessons: LessonSummary[]): LessonSummary | null {
+  const now = Date.now();
+  const time = (l: LessonSummary) => new Date(l.starts_at!).getTime();
+  return (
+    lessons.filter((l) => l.starts_at && time(l) > now).sort((a, b) => time(a) - time(b))[0] ?? null
   );
 }
 
-function sortHomework(items: Homework[]): Homework[] {
-  return [...items].sort((a, b) => a.week_number - b.week_number || a.id - b.id);
-}
-
-// Ближайший вебинар и список уже прошедших считаются в момент загрузки, а не при отрисовке
-function splitByTime(schedule: ScheduleItem[]) {
-  const now = Date.now();
-  const time = (item: ScheduleItem) => new Date(item.stream_date!).getTime();
-  const dated = schedule.filter((item) => item.stream_date);
-  const upcoming = dated.filter((item) => time(item) > now).sort((a, b) => time(a) - time(b))[0] ?? null;
-  const pastIds = new Set(dated.filter((item) => time(item) <= now).map((item) => item.id));
-  return { upcoming, pastIds };
+function sortLessons(items: LessonSummary[]): LessonSummary[] {
+  return [...items].sort(
+    (a, b) => a.number - b.number || (a.starts_at ?? "").localeCompare(b.starts_at ?? ""),
+  );
 }
 
 export default function CoursePage() {
@@ -72,36 +43,23 @@ export default function CoursePage() {
 
   const [me, setMe] = useState<User | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
-  const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
-  const [homework, setHomework] = useState<Homework[]>([]);
-  const [upcoming, setUpcoming] = useState<ScheduleItem | null>(null);
-  const [pastIds, setPastIds] = useState<Set<number>>(new Set());
+  const [lessons, setLessons] = useState<LessonSummary[]>([]);
+  const [upcoming, setUpcoming] = useState<LessonSummary | null>(null);
   const [students, setStudents] = useState<StudentProgress[]>([]);
   const [teacherSubs, setTeacherSubs] = useState<SubmissionForTeacher[]>([]);
   const [mySubs, setMySubs] = useState<Submission[]>([]);
+  const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
-
-  // Обновить активность учеников (после проверки работы или отметки присутствия)
-  const reloadStudents = useCallback(async () => {
-    try {
-      setStudents(await api<StudentProgress[]>(`/teacher/courses/${courseId}/students`));
-    } catch {
-      // не страшно: цифры обновятся при следующем открытии страницы
-    }
-  }, [courseId]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [u, c, s, h] = await Promise.all([
+        const [u, c, l] = await Promise.all([
           api<User>("/me"),
           api<Course>(`/courses/${courseId}`),
-          api<ScheduleItem[]>(`/courses/${courseId}/schedule`),
-          api<Homework[]>(`/courses/${courseId}/homework`),
+          api<LessonSummary[]>(`/courses/${courseId}/lessons`),
         ]);
-
         if (u.role === "admin" || c.teacher_id === u.id) {
-          // Преподавателю: ученики с активностью и все работы группы
           const [st, subs] = await Promise.all([
             api<StudentProgress[]>(`/teacher/courses/${courseId}/students`),
             api<SubmissionForTeacher[]>(`/teacher/courses/${courseId}/submissions`),
@@ -109,69 +67,25 @@ export default function CoursePage() {
           setStudents(st);
           setTeacherSubs(subs);
         } else if (u.role === "curator") {
-          // Куратору: только ученики с активностью, чтобы решать, кого куда перевести
           setStudents(await api<StudentProgress[]>(`/teacher/courses/${courseId}/students`));
         } else {
-          // Ученику: только его собственные работы
           setMySubs(await api<Submission[]>(`/courses/${courseId}/my-submissions`));
         }
-
-        const { upcoming: next, pastIds: past } = splitByTime(s);
+        const sorted = sortLessons(l);
         setMe(u);
         setCourse(c);
-        setSchedule(s);
-        setHomework(h);
-        setUpcoming(next);
-        setPastIds(past);
+        setLessons(sorted);
+        setUpcoming(findUpcoming(sorted));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.replace("/login");
         } else {
-          setError(err instanceof ApiError ? err.message : "Не удалось загрузить курс.");
+          setError(err instanceof ApiError ? err.message : "Не удалось загрузить группу.");
         }
       }
     }
     load();
   }, [courseId, router]);
-
-  function updateSchedule(items: ScheduleItem[]) {
-    const sorted = sortSchedule(items);
-    const { upcoming: next, pastIds: past } = splitByTime(sorted);
-    setSchedule(sorted);
-    setUpcoming(next);
-    setPastIds(past);
-  }
-
-  async function deleteScheduleItem(item: ScheduleItem) {
-    if (!window.confirm(`Удалить вебинар недели ${item.week_number}?`)) return;
-    try {
-      await api(`/teacher/courses/${courseId}/schedule/${item.id}`, { method: "DELETE" });
-      updateSchedule(schedule.filter((s) => s.id !== item.id));
-      reloadStudents();
-    } catch (err) {
-      window.alert(err instanceof ApiError ? err.message : "Не удалось удалить.");
-    }
-  }
-
-  async function deleteHomework(item: Homework) {
-    if (!window.confirm(`Удалить домашку недели ${item.week_number}?`)) return;
-    try {
-      await api(`/teacher/courses/${courseId}/homework/${item.id}`, { method: "DELETE" });
-      setHomework(homework.filter((h) => h.id !== item.id));
-      reloadStudents();
-    } catch (err) {
-      window.alert(err instanceof ApiError ? err.message : "Не удалось удалить.");
-    }
-  }
-
-  function handleMySubmission(saved: Submission) {
-    setMySubs([...mySubs.filter((s) => s.id !== saved.id), saved]);
-  }
-
-  function handleReviewed(saved: Submission) {
-    setTeacherSubs(teacherSubs.map((s) => (s.id === saved.id ? { ...s, ...saved } : s)));
-    reloadStudents();
-  }
 
   if (error) {
     return (
@@ -191,11 +105,10 @@ export default function CoursePage() {
     return <p className="container-page py-20 text-muted">Загружаем...</p>;
   }
 
-  // Редактировать может преподаватель этой группы и админ. Сервер проверяет то же самое,
-  // здесь это только чтобы не показывать ученику формы, которыми он всё равно не сможет пользоваться.
   const canEdit = me.role === "admin" || course.teacher_id === me.id;
-  const isCurator = me.role === "curator"; // смотрит группу, но ничего не меняет
+  const isCurator = me.role === "curator";
   const isStudent = me.role === "student";
+  const nextNumber = lessons.reduce((max, l) => Math.max(max, l.number), 0) + 1;
 
   return (
     <div className="container-page pb-20">
@@ -207,26 +120,21 @@ export default function CoursePage() {
         </Link>
         <h1 className="mt-4 font-display text-4xl leading-tight md:text-5xl">{course.title}</h1>
         {isCurator && (
-          <p className="mt-3 text-muted">Режим просмотра: менять расписание и домашки может преподаватель группы.</p>
+          <p className="mt-3 text-muted">Режим просмотра: менять занятия может преподаватель группы.</p>
         )}
 
         {upcoming && (
           <section className="card mt-10 flex flex-col items-start gap-6 bg-ultra p-8 text-white md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-lg font-bold">Ближайший вебинар</h2>
-              <p className="mt-1 text-2xl font-bold first-letter:uppercase">
-                {formatDate(upcoming.stream_date)}
+              <h2 className="text-lg font-bold">Ближайшее занятие</h2>
+              <p className="mt-1 text-2xl font-bold first-letter:uppercase">{formatDateTime(upcoming.starts_at)}</p>
+              <p className="mt-1 text-white/85">
+                {upcoming.number}. {upcoming.topic}
               </p>
-              <p className="mt-1 text-white/80">Неделя {upcoming.week_number}</p>
             </div>
-            <a
-              href={upcoming.webinar_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-sun shrink-0"
-            >
-              Войти на вебинар
-            </a>
+            <Link href={`/cabinet/courses/${courseId}/lessons/${upcoming.id}`} className="btn btn-sun shrink-0">
+              Открыть занятие
+            </Link>
           </section>
         )}
 
@@ -238,125 +146,84 @@ export default function CoursePage() {
         )}
 
         <section className="mt-14">
-          <h2 className="font-display text-3xl">Расписание</h2>
-          {schedule.length === 0 ? (
-            <p className="mt-4 text-muted">Расписание пока не добавлено.</p>
-          ) : (
-            <ul className="mt-6 border-t-2 border-ink">
-              {schedule.map((item) => (
-                <li key={item.id} className="border-b-2 border-ink py-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-bold">Неделя {item.week_number}</p>
-                      <p className="text-muted first-letter:uppercase">
-                        {formatDate(item.stream_date)}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-6">
-                      <a
-                        href={item.webinar_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-link"
-                      >
-                        Ссылка на вебинар
-                      </a>
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => deleteScheduleItem(item)}
-                          className="danger-link"
-                        >
-                          Удалить
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {canEdit && pastIds.has(item.id) && (
-                    <div className="mt-3">
-                      <AttendanceEditor
-                        courseId={courseId}
-                        scheduleId={item.id}
-                        students={students}
-                        onSaved={reloadStudents}
-                      />
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {canEdit && (
-            <AddScheduleForm
-              courseId={courseId}
-              onAdded={(item) => updateSchedule([...schedule, item])}
-            />
-          )}
-        </section>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="font-display text-3xl">Занятия</h2>
+            {canEdit && !showForm && (
+              <button type="button" onClick={() => setShowForm(true)} className="btn btn-ultra btn-sm">
+                Добавить занятие
+              </button>
+            )}
+          </div>
 
-        <section className="mt-14">
-          <h2 className="font-display text-3xl">Домашние задания</h2>
-          {homework.length === 0 ? (
-            <p className="mt-4 text-muted">Домашек пока нет.</p>
-          ) : (
-            <ul className="mt-6 grid gap-6">
-              {homework.map((item) => (
-                <li key={item.id} className="card bg-white p-7">
-                  <div className="flex items-start justify-between gap-6">
-                    <p className="font-bold">Неделя {item.week_number}</p>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => deleteHomework(item)}
-                        className="danger-link"
-                      >
-                        Удалить
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-3 whitespace-pre-line leading-relaxed">{item.description}</p>
-                  {item.link && (
-                    <p className="mt-4">
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-link"
-                      >
-                        Открыть материалы
-                      </a>{" "}
-                      <span className="text-sm text-muted">({hostOf(item.link)})</span>
-                    </p>
-                  )}
-
-                  {canEdit ? (
-                    <ReviewSubmissions
-                      courseId={courseId}
-                      tasksCount={item.tasks_count}
-                      submissions={teacherSubs.filter((s) => s.homework_id === item.id)}
-                      onReviewed={handleReviewed}
-                    />
-                  ) : isStudent && (
-                    <SubmitHomework
-                      courseId={courseId}
-                      homeworkId={item.id}
-                      tasksCount={item.tasks_count}
-                      submission={mySubs.find((s) => s.homework_id === item.id)}
-                      onSaved={handleMySubmission}
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
+          {canEdit && showForm && (
+            <div className="mt-6">
+              <LessonForm
+                courseId={courseId}
+                nextNumber={nextNumber}
+                onCancel={() => setShowForm(false)}
+                onSaved={(saved) => {
+                  const summary: LessonSummary = {
+                    id: saved.id,
+                    course_id: saved.course_id,
+                    number: saved.number,
+                    topic: saved.topic,
+                    kind: saved.kind,
+                    starts_at: saved.starts_at,
+                    has_video: Boolean(saved.video_url),
+                    has_notes: Boolean(saved.notes_url),
+                    has_homework: Boolean(saved.homework_text || saved.homework_link),
+                  };
+                  const sorted = sortLessons([...lessons, summary]);
+                  setLessons(sorted);
+                  setUpcoming(findUpcoming(sorted));
+                  setShowForm(false);
+                }}
+              />
+            </div>
           )}
-          {canEdit && (
-            <AddHomeworkForm
-              courseId={courseId}
-              onAdded={(item) => {
-                setHomework(sortHomework([...homework, item]));
-                reloadStudents();
-              }}
-            />
+
+          {lessons.length === 0 ? (
+            <p className="mt-4 text-muted">Занятий пока нет.</p>
+          ) : (
+            <ul className="mt-6 grid gap-4">
+              {lessons.map((lesson) => {
+                const toReview = teacherSubs.filter(
+                  (s) => s.lesson_id === lesson.id && s.status === "submitted",
+                ).length;
+                const mine = mySubs.find((s) => s.lesson_id === lesson.id);
+                return (
+                  <li key={lesson.id}>
+                    <Link
+                      href={`/cabinet/courses/${courseId}/lessons/${lesson.id}`}
+                      className="lesson-row"
+                    >
+                      <span className="lesson-number" aria-hidden="true">
+                        {lesson.number}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-lg font-bold">
+                          <span className="sr-only">Занятие {lesson.number}. </span>
+                          {lesson.topic}
+                        </span>
+                        <span className="block text-sm text-muted first-letter:uppercase">
+                          {formatDateTime(lesson.starts_at)}
+                        </span>
+                      </span>
+                      <span className="flex flex-wrap items-center justify-end gap-2">
+                        {lesson.kind === "mock" && <span className="status-badge bg-bubble">Пробник</span>}
+                        {lesson.has_video && <span className="status-badge bg-white">Видео</span>}
+                        {lesson.has_notes && <span className="status-badge bg-white">Конспект</span>}
+                        {lesson.has_homework && !isStudent && (
+                          <span className="status-badge bg-white">Домашка</span>
+                        )}
+                        {lesson.has_homework && isStudent && <StatusBadge status={mine?.status ?? "none"} />}
+                        {toReview > 0 && <span className="status-badge bg-sky">На проверке: {toReview}</span>}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
       </main>

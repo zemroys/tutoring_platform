@@ -51,3 +51,26 @@ def get_staff_course(course_id: int, user: models.User, db: Session) -> models.C
             raise HTTPException(status_code=404, detail="Курс не найден")
         return course
     return get_own_course(course_id, user, db)
+
+
+def get_lesson(lesson_id: int, db: Session) -> models.Lesson:
+    lesson = db.get(models.Lesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(status_code=404, detail="Занятие не найдено")
+    return lesson
+
+
+def check_lesson_access(lesson: models.Lesson, user: models.User, db: Session) -> models.Course:
+    """Можно ли открыть занятие целиком (видео, конспект, домашку).
+    Сейчас доступ по группе. На этапе покупки отдельных занятий меняется только эта функция."""
+    return check_access(lesson.course_id, user, db)
+
+
+def get_own_lesson(course_id: int, lesson_id: int, user: models.User, db: Session) -> models.Lesson:
+    """Занятие своей группы для преподавателя (или любой для админа).
+    Занятие обязательно из этой группы: иначе через свою группу можно было бы менять чужие занятия."""
+    get_own_course(course_id, user, db)
+    lesson = db.get(models.Lesson, lesson_id)
+    if lesson is None or lesson.course_id != course_id:
+        raise HTTPException(status_code=404, detail="Занятие не найдено")
+    return lesson

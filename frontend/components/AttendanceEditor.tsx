@@ -8,19 +8,19 @@ import { fullName } from "@/lib/names";
 
 type Props = {
   courseId: string;
-  scheduleId: number;
+  lessonId: number;
   students: StudentProgress[];
   onSaved: () => void;
 };
 
-export default function AttendanceEditor({ courseId, scheduleId, students, onSaved }: Props) {
+export default function AttendanceEditor({ courseId, lessonId, students, onSaved }: Props) {
   const [open, setOpen] = useState(false);
   const [present, setPresent] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const url = `/teacher/courses/${courseId}/schedule/${scheduleId}/attendance`;
+  const url = `/teacher/courses/${courseId}/lessons/${lessonId}/attendance`;
 
   async function handleOpen() {
     setOpen(true);

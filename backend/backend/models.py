@@ -31,6 +31,10 @@ class Purchase(Base):
     status = Column(String, default="pending")
     paid_at = Column(TIMESTAMP, nullable=True)
 
+# ---------- СТАРОЕ: расписание и домашки до перехода на занятия ----------
+# Сайт этими таблицами больше не пользуется. Удалим их отдельной миграцией.
+
+
 class Schedule(Base):
     __tablename__ = "schedule"
     id = Column(Integer, primary_key=True, index=True)
@@ -108,3 +112,51 @@ class Payment(Base):
     method = Column(String(20), nullable=False, default="transfer", server_default="transfer")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # кто отметил оплату
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+# ---------- Занятия ----------
+
+
+class Lesson(Base):
+    """Занятие группы: вебинар, видео с теорией, конспект и домашка. Пробник — занятие с kind="mock"."""
+
+    __tablename__ = "lessons"
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    number = Column(Integer, nullable=False)
+    topic = Column(String(200), nullable=False)
+    kind = Column(String(10), nullable=False, default="lesson", server_default="lesson")
+    starts_at = Column(TIMESTAMP, nullable=True)  # дата и время вебинара
+    webinar_link = Column(String, nullable=True)
+    video_url = Column(String, nullable=True)  # теория: YouTube или VK Видео
+    notes_url = Column(String, nullable=True)  # конспект на Яндекс Диске или Google Диске
+    homework_text = Column(Text, nullable=True)
+    homework_link = Column(String, nullable=True)
+    tasks_count = Column(Integer, nullable=True)
+
+
+class LessonSubmission(Base):
+    """Сданная домашка к занятию. Одна на ученика и занятие, пересдача обновляет её."""
+
+    __tablename__ = "lesson_submissions"
+    __table_args__ = (UniqueConstraint("lesson_id", "user_id", name="uq_lesson_submission_user"),)
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    link = Column(String, nullable=True)
+    comment = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="submitted", server_default="submitted")
+    teacher_comment = Column(Text, nullable=True)
+    task_results = Column(JSON, nullable=True)
+    submitted_at = Column(TIMESTAMP, server_default=func.now())
+    reviewed_at = Column(TIMESTAMP, nullable=True)
+
+
+class LessonAttendance(Base):
+    """Отметка, что ученик был на вебинаре занятия."""
+
+    __tablename__ = "lesson_attendance"
+    __table_args__ = (UniqueConstraint("lesson_id", "user_id", name="uq_lesson_attendance_user"),)
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

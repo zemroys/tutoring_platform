@@ -9,14 +9,13 @@ import TaskMarks from "@/components/TaskMarks";
 import { api, ApiError, type Submission } from "@/lib/api";
 
 type Props = {
-  courseId: string;
-  homeworkId: number;
+  lessonId: number;
   tasksCount: number | null;
   submission: Submission | undefined;
   onSaved: (submission: Submission) => void;
 };
 
-export default function SubmitHomework({ courseId, homeworkId, tasksCount, submission, onSaved }: Props) {
+export default function SubmitHomework({ lessonId, tasksCount, submission, onSaved }: Props) {
   const [link, setLink] = useState(submission?.link ?? "");
   const [comment, setComment] = useState(submission?.comment ?? "");
   const [error, setError] = useState("");
@@ -31,7 +30,7 @@ export default function SubmitHomework({ courseId, homeworkId, tasksCount, submi
     setError("");
     setSaving(true);
     try {
-      const saved = await api<Submission>(`/courses/${courseId}/homework/${homeworkId}/submission`, {
+      const saved = await api<Submission>(`/lessons/${lessonId}/submission`, {
         method: "PUT",
         body: JSON.stringify({ link: link.trim(), comment: comment.trim() || null }),
       });
