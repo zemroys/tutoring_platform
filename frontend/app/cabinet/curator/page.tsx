@@ -10,7 +10,6 @@ import CuratorStudentCard from "@/components/CuratorStudentCard";
 import { api, ApiError, type CuratorCourse, type CuratorStudent, type User } from "@/lib/api";
 import { CATALOG, LEVELS } from "@/lib/courses";
 import { fullName } from "@/lib/names";
-import { currentPeriod, formatPeriod } from "@/lib/periods";
 
 function fetchCuratorData() {
   return Promise.all([
@@ -28,7 +27,7 @@ export default function CuratorPage() {
   const [search, setSearch] = useState("");
   const [onlyWithoutGroup, setOnlyWithoutGroup] = useState(false);
   const [me, setMe] = useState<User | null>(null);
-  const [period, setPeriod] = useState("");
+
 
   useEffect(() => {
     async function load() {
@@ -37,7 +36,6 @@ export default function CuratorPage() {
         setStudents(s);
         setCourses(c);
         setMe(u);
-        setPeriod(currentPeriod());
       } catch (err) {
         // Не вошёл — на вход, вошёл без прав куратора — в обычный кабинет
         router.replace(err instanceof ApiError && err.status === 401 ? "/login" : "/cabinet");
@@ -80,7 +78,7 @@ export default function CuratorPage() {
           В кабинет
         </Link>
         <h1 className="mt-4 font-display text-4xl md:text-5xl">Панель куратора</h1>
-        <p className="mt-3 text-muted">Текущий месяц: {period && formatPeriod(period)}</p>
+
 
         <section className="mt-12">
           <h2 className="font-display text-3xl">Группы</h2>
@@ -94,11 +92,7 @@ export default function CuratorPage() {
                     <Link href={`/cabinet/courses/${c.id}`} className="font-semibold hover:underline">
                       {c.title}
                     </Link>
-                    <span
-                      className={`status-badge shrink-0 ${c.students_count >= c.capacity ? "bg-peach" : "bg-mint"}`}
-                    >
-                      {c.students_count}/{c.capacity}
-                    </span>
+                    <span className="status-badge shrink-0 bg-mint">В группе: {c.members_count}</span>
                   </div>
                   <p className="mt-2 text-sm text-muted">
                     {c.subject_id
@@ -144,7 +138,6 @@ export default function CuratorPage() {
                 key={student.id}
                 student={student}
                 courses={courses}
-                period={period}
                 isAdmin={me?.role === "admin"}
                 onChanged={reload}
               />

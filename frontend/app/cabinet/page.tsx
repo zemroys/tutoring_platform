@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CabinetHeader from "@/components/CabinetHeader";
-import { api, type Course, type User } from "@/lib/api";
+import OrderBadge from "@/components/OrderBadge";
+import { api, ApiError, type Course, type Order, type User } from "@/lib/api";
 import { CATALOG, LEVELS, formatPrice } from "@/lib/courses";
 import { syncPendingQuizResult, type QuizResult } from "@/lib/quiz";
 import { fullName } from "@/lib/names";
@@ -22,6 +23,7 @@ export default function CabinetPage() {
   const [user, setUser] = useState<User | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [quiz, setQuiz] = useState<QuizResult | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -39,6 +41,7 @@ export default function CabinetPage() {
           // Если опрос проходили до регистрации, переносим результат в аккаунт
           await syncPendingQuizResult();
           setQuiz(await api<QuizResult | null>("/me/quiz-result").catch(() => null));
+          setOrders(await api<Order[]>("/my/orders").catch(() => []));
         }
         setUser(me);
         setCourses(list);
@@ -49,11 +52,24 @@ export default function CabinetPage() {
     load();
   }, [router]);
 
+  async function cancelOrder(order: Order) {
+    if (!window.confirm(`Отменить заказ «${order.description}»?`)) return;
+    try {
+      await api(`/orders/${order.id}`, { method: "DELETE" });
+      setOrders(orders.filter((o) => o.id !== order.id));
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : "Не удалось отменить.");
+    }
+  }
+
   if (!user) {
     return <p className="container-page py-20 text-muted">Загружаем...</p>;
   }
 
   const isStudent = user.role === "student";
+  // Блок "Мои группы": у куратора его нет вовсе, у админа только если он сам ведёт группы
+  const showCourses =
+    user.role !== "curator" && !(user.role === "admin" && courses.length === 0);
 
   return (
     <div className="container-page pb-20">
@@ -71,11 +87,50 @@ export default function CabinetPage() {
           </Link>
         )}
 
-        {user.role !== "curator" && (
-          <h2 className="mt-12 text-2xl font-bold">{isStudent ? "Мои курсы" : "Мои группы"}</h2>
+        {isStudent && (
+          <Link href="/cabinet/groups" className="btn btn-sun mt-8">
+            Выбрать группу и купить занятия
+          </Link>
         )}
 
-        {user.role === "curator" ? null : courses.length === 0 ? (
+        {isStudent && orders.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-2xl font-bold">Мои заказы</h2>
+            <ul className="mt-4 grid gap-3">
+              {orders.map((o) => (
+                <li
+                  key={o.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-ink bg-white px-5 py-4"
+                >
+                  <span>
+                    <span className="font-semibold">{o.course_title}</span>
+                    <span className="text-muted">. {o.description}</span>
+                  </span>
+                  <span className="flex items-center gap-4">
+                    <span className="font-bold whitespace-nowrap">{formatPrice(o.amount)}</span>
+                    <OrderBadge status={o.status} />
+                    {o.status === "pending" && (
+                      <button type="button" className="danger-link text-sm" onClick={() => cancelOrder(o)}>
+                        Отменить
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {orders.some((o) => o.status === "pending") && (
+              <p className="mt-3 text-sm text-muted">
+                Пока оплата переводом: куратор напишет тебе в Телеграм с реквизитами. После оплаты занятия откроются сами.
+              </p>
+            )}
+          </section>
+        )}
+
+        {showCourses && (
+          <h2 className="mt-12 text-2xl font-bold">Мои группы</h2>
+        )}
+
+        {!showCourses ? null : courses.length === 0 ? (
           <div className="card mt-6 bg-sun p-8">
             {isStudent && quiz ? (
               <>

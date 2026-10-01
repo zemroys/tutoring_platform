@@ -451,3 +451,21 @@ button.task-mark:active {
     transition: none;
   }
 }
+
+/* ---------- Некупленные занятия ---------- */
+.lesson-locked {
+  background: var(--color-paper);
+  border-style: dashed;
+}
+.lesson-locked .lesson-number {
+  background: #fff;
+}
+
+/* ---------- Некупленные занятия ---------- */
+.lesson-locked {
+  background: var(--color-paper);
+  border-style: dashed;
+}
+.lesson-locked .lesson-number {
+  background: #fff;
+}
